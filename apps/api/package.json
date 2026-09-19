@@ -1,0 +1,6 @@
+{
+  "name": "@codek-hub/api",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js"
+}

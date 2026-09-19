@@ -1,0 +1,6 @@
+{
+  "name": "@codek-hub/bot",
+  "private": true,
+  "type": "module",
+  "main": "src/index.js"
+}
