@@ -1,7 +1,7 @@
 import {Client,GatewayIntentBits,Events,SlashCommandBuilder,REST,Routes,PermissionFlagsBits,ChannelType,ActionRowBuilder,StringSelectMenuBuilder,ButtonBuilder,ButtonStyle,EmbedBuilder,ModalBuilder,TextInputBuilder,TextInputStyle,ActivityType} from 'discord.js';
 import {loadEnvironment,logger,renderVariables,prisma,ensureGuild,findAutoResponder,audit} from '../../../packages/shared/src/index.js';
 const env=loadEnvironment();
-const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent,GatewayIntentBits.GuildPresences]});
+const client=new Client({intents:[GatewayIntentBits.Guilds,GatewayIntentBits.GuildMembers,GatewayIntentBits.GuildMessages,GatewayIntentBits.MessageContent]});
 const cooldowns=new Map(), locks=new Set();
 const admin=PermissionFlagsBits.Administrator;
 const commands=[
