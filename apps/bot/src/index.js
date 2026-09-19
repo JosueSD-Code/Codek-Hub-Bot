@@ -510,6 +510,8 @@ client.on(Events.InteractionCreate,async i=>{
       const canClaim=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
       if(!canClaim)return i.reply(deny('Solo soporte puede reclamar tickets.'));
 
+      if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
+      if(t.claimedById===i.user.id)return i.reply(deny('Este ticket ya está reclamado por ti.'));
       if(t.claimedById&&t.claimedById!==i.user.id){
         return i.reply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
       }
@@ -534,6 +536,7 @@ client.on(Events.InteractionCreate,async i=>{
         include:{category:true}
       });
       if(!t||t.status!=='open')return i.reply(deny('Ticket no encontrado o cerrado.'));
+      if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
 
       const member=i.member;
       const isSupport=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
@@ -558,6 +561,7 @@ client.on(Events.InteractionCreate,async i=>{
         include:{category:true}
       });
       if(!t)return i.reply(deny('Ticket no encontrado.'));
+      if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
       const member=i.member;
       const isSupport=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
       if(i.user.id!==t.userId&&!isSupport)return i.reply(deny('No tienes permiso para cerrar este ticket.'));
@@ -748,6 +752,7 @@ client.on(Events.InteractionCreate,async i=>{
       const rating=i.options.getInteger('rating');
 
       if(!target)return i.reply(deny('No se encontró el usuario indicado.'));
+      if(target.bot)return i.reply(deny('No puedes dejar un vouch a un bot.'));
       if(target.id===i.user.id)return i.reply(deny('No puedes votarte a ti mismo.'));
 
       const duplicate=await prisma.vouch.findFirst({
@@ -908,7 +913,7 @@ client.on(Events.InteractionCreate,async i=>{
         if(!ids.length)return i.reply(deny('Debes indicar al menos un rol de soporte válido.'));
 
         const discordCategory=i.options.getChannel('categoria-canal');
-        if(discordCategory&&!discordCategory.isTextBased()&&discordCategory.type!==ChannelType.GuildCategory){
+        if(discordCategory&&discordCategory.type!==ChannelType.GuildCategory){
           return i.reply(deny('La categoría Discord indicada no es válida.'));
         }
 
