@@ -882,6 +882,11 @@ client.on(Events.InteractionCreate,async i=>{
           return i.reply(deny('La categoría Discord indicada no es válida.'));
         }
 
+        const emojiValue=i.options.getString('emoji')?.trim()||null;
+        if(emojiValue&&!emojiExists(i.guild,emojiValue)){
+          return i.reply(deny('El emoji indicado no existe en este servidor. Usa un emoji Unicode o un emoji personalizado de este servidor.'));
+        }
+
         const c=await prisma.ticketCategory.create({
           data:{
             panel:{connect:{id:p.id}},
@@ -911,7 +916,7 @@ client.on(Events.InteractionCreate,async i=>{
         label:c.name.slice(0,100),
         value:c.id,
         description:(c.description||'Abrir ticket').slice(0,100),
-        ...(c.emoji?{emoji:c.emoji}: {})
+        ...(c.emoji?{emoji:normalizeEmoji(i.guild,c.emoji)}: {})
       }));
 
       const menu=new StringSelectMenuBuilder()
