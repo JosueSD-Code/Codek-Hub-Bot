@@ -1,43 +1,5 @@
 {
-  "name": "codek-hub",
-  "private": true,
-  "type": "module",
-  "workspaces": [
-    "apps/*",
-    "packages/*"
-  ],
-  "scripts": {
-    "bot": "node apps/bot/src/index.js",
-    "api": "node apps/api/src/index.js",
-    "dashboard": "cd apps/dashboard && next dev -p 3000",
-    "build": "cd apps/dashboard && next build",
-    "start": "cd apps/dashboard && next start -p 3000",
-    "check:env": "node scripts/check-env.js",
-    "check:env:prod": "node scripts/check-env.js --strict",
-    "db:generate": "prisma generate",
-    "db:migrate": "prisma migrate dev --name init",
-    "db:push": "prisma db push",
-    "dev": "concurrently -k \"npm run bot\" \"npm run api\" \"npm run dashboard\"",
-    "test": "node --test"
-  },
-  "dependencies": {
-    "@prisma/client": "^5.19.1",
-    "concurrently": "^9.0.1",
-    "cookie-parser": "^1.4.7",
-    "cors": "^2.8.5",
-    "discord.js": "^14.16.0",
-    "dotenv": "^16.4.1",
-    "express": "^4.21.2",
-    "express-rate-limit": "^7.1.0",
-    "express-session": "^1.18.1",
-    "helmet": "^8.1.0",
-    "jsonwebtoken": "^9.0.2",
-    "next": "^14.2.15",
-    "prisma": "^5.19.1",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "socket.io": "^4.8.1",
-    "uuid": "^11.0.0",
-    "zod": "^3.24.0"
-  }
+  "name":"codek-hub","version":"1.0.0","private":true,"type":"module",
+  "scripts":{"bot":"node apps/bot/src/index.js","api":"node apps/api/src/index.js","dev":"concurrently -k \"npm run bot\" \"npm run api\"","db:generate":"prisma generate","db:migrate":"prisma migrate deploy","db:push":"prisma db push","test":"node --test"},
+  "dependencies":{"@prisma/client":"^5.19.1","concurrently":"^9.0.1","cors":"^2.8.5","discord.js":"^14.16.0","dotenv":"^16.4.1","express":"^4.21.2","express-rate-limit":"^7.1.0","helmet":"^8.1.0","prisma":"^5.19.1","zod":"^3.24.0"}
 }
