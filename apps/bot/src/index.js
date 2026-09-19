@@ -315,15 +315,24 @@ async function createTicket(i,cat,answers=[]){
       new ButtonBuilder().setCustomId('ticket:claim:'+t.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId('ticket:close:'+t.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger)
     );
-    const a=answers.length?'\n\n'+answers.map(x=>'**'+x.label+':** '+x.answer).join('\n'):'';
+    const ticketContext=context(i.user,i.guild,ch,{
+      ticket:String(n),
+      category:cat.name,
+      staff:supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
+      ticketid:t.id
+    });
+    const a=answers.length?'\n\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
+
+    const ticketEmbed=new EmbedBuilder()
+      .setTitle(renderVariables('Ticket • '+cat.name,ticketContext))
+      .setDescription(renderVariables(cat.description||'El equipo te atenderá pronto.',ticketContext)+a)
+      .setColor(0x5865F2)
+      .setThumbnail(i.user.displayAvatarURL({size:512}))
+      .setTimestamp();
 
     await ch.send({
       content:i.user.toString()+' '+supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
-      embeds:[new EmbedBuilder()
-        .setTitle('Ticket • '+cat.name)
-        .setDescription((cat.description||'El equipo te atenderá pronto.')+a)
-        .setColor(0x5865F2)
-        .setTimestamp()],
+      embeds:[ticketEmbed],
       components:[row]
     });
 
@@ -646,7 +655,14 @@ client.on(Events.InteractionCreate,async i=>{
     if(!i.isChatInputCommand())return;
 
     if(i.commandName==='variables'){
-      return i.reply(deny('{user} {username} {displayname} {userid} {server} {membercount} {channel} {channelname} {ticket} {category} {staff}'));
+      return i.reply(deny([
+        'Usuarios: {user} {mention} {username} {tag} {displayname} {userid}',
+        'Avatares: {useravatar} {avatar} {user_avatar}',
+        'Servidor: {server} {guild} {membercount} {guildid} {guildicon} {servericon}',
+        'Canal: {channel} {channelname} {channelid}',
+        'Ticket: {ticket} {ticketid} {category} {staff}',
+        'Vouch: {client} {clientid} {clientavatar} {target} {targetid} {targetavatar}'
+      ].join('\n')));
     }
 
     if(i.commandName==='welcome'){
