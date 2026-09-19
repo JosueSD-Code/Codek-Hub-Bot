@@ -122,6 +122,7 @@ const color=v=>{
   return /^[0-9a-fA-F]{6}$/.test(h)?parseInt(h,16):0x5865F2;
 };
 const isAdmin=i=>Boolean(i.memberPermissions?.has(ADMIN));
+const clip=(value,max)=>String(value??'').slice(0,max);
 const roleIds=(g,v)=>String(v||'').split(',')
   .map(x=>x.trim().replace(/[<@&>]/g,''))
   .filter(id=>g?.roles.cache.has(id));
@@ -264,21 +265,13 @@ async function createTicket(i,cat,answers=[]){
   if(locks.has(key))return i.reply(deny('Ya se está creando tu ticket.'));
   locks.add(key);
 
+  let ch=null;
   try{
     const supportRoleIds=cat.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
     if(!supportRoleIds.length){
       return i.reply(deny('Esta categoría no tiene ningún rol de soporte válido.'));
     }
 
-    const old=await prisma.ticket.findFirst({
-      where:{guildId:i.guildId,categoryId:cat.id,userId:i.user.id,status:'open'}
-    });
-    if(old){
-      const oldChannel=i.guild.channels.cache.get(old.channelId);
-      return i.reply(deny(oldChannel?'Ya tienes un ticket abierto: '+oldChannel:'Ya tienes un ticket abierto para esta categoría.'));
-    }
-
-    const n=await nextNumber(i.guildId,cat.id);
     const overwrites=[
       {id:i.guild.roles.everyone.id,deny:['ViewChannel']},
       {id:i.user.id,allow:['ViewChannel','SendMessages','ReadMessageHistory']},
@@ -288,29 +281,65 @@ async function createTicket(i,cat,answers=[]){
       }))
     ];
 
-    const ch=await i.guild.channels.create({
-      name:clean(cat.name)+'-'+n,
+    ch=await i.guild.channels.create({
+      name:clip(clean(cat.name)+'-pending',95),
       type:ChannelType.GuildText,
       parent:cat.discordCategoryId&&i.guild.channels.cache.has(cat.discordCategoryId)?cat.discordCategoryId:undefined,
       permissionOverwrites:overwrites
     });
 
     let t;
+    let n;
     try{
-      t=await prisma.ticket.create({
-        data:{
-          guildId:i.guildId,
-          categoryId:cat.id,
-          userId:i.user.id,
-          channelId:ch.id,
-          number:n,
-          answers:answers.length?{create:answers}:undefined
+      ({t,n}=await prisma.$transaction(async tx=>{
+        const k='codek:'+i.guildId+':'+cat.id;
+        let locked=false;
+
+        while(!locked){
+          const rows=await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${k})) AS locked`;
+          locked=Boolean(rows[0]?.locked);
+          if(!locked)await new Promise(resolve=>setTimeout(resolve,25));
         }
-      });
+
+        const old=await tx.ticket.findFirst({
+          where:{guildId:i.guildId,categoryId:cat.id,userId:i.user.id,status:'open'},
+          select:{channelId:true}
+        });
+        if(old){
+          const error=new Error('TICKET_DUPLICATE');
+          error.channelId=old.channelId;
+          throw error;
+        }
+
+        const last=await tx.ticket.findFirst({
+          where:{guildId:i.guildId,categoryId:cat.id},
+          orderBy:{number:'desc'},
+          select:{number:true}
+        });
+        n=(last?.number||0)+1;
+
+        const ticket=await tx.ticket.create({
+          data:{
+            guildId:i.guildId,
+            categoryId:cat.id,
+            userId:i.user.id,
+            channelId:ch.id,
+            number:n,
+            answers:answers.length?{create:answers}:undefined
+          }
+        });
+        return {t:ticket,n};
+      }));
     }catch(e){
       await ch.delete().catch(()=>{});
+      if(e.message==='TICKET_DUPLICATE'){
+        const oldChannel=i.guild.channels.cache.get(e.channelId);
+        return i.reply(deny(oldChannel?'Ya tienes un ticket abierto: '+oldChannel:'Ya tienes un ticket abierto para esta categoría.'));
+      }
       throw e;
     }
+
+    await ch.edit({name:clip(clean(cat.name)+'-'+n,95)}).catch(e=>logger.warn('Ticket rename failed',{error:e.message}));
 
     const row=new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket:claim:'+t.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),
@@ -322,17 +351,17 @@ async function createTicket(i,cat,answers=[]){
       staff:supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
       ticketid:t.id
     });
-    const a=answers.length?'\n\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
+    const a=answers.length?'\\n\\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\\n'):'';
 
     const ticketEmbed=new EmbedBuilder()
-      .setTitle(renderVariables('Ticket • '+cat.name,ticketContext))
-      .setDescription(renderVariables(cat.description||'El equipo te atenderá pronto.',ticketContext)+a)
+      .setTitle(clip(renderVariables('Ticket • '+cat.name,ticketContext),256))
+      .setDescription(clip(renderVariables(cat.description||'El equipo te atenderá pronto.',ticketContext)+a,4096))
       .setColor(0x5865F2)
       .setThumbnail(i.user.displayAvatarURL({size:512}))
       .setTimestamp();
 
     await ch.send({
-      content:i.user.toString()+' '+supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
+      content:clip(i.user.toString()+' '+supportRoleIds.map(x=>'<@&'+x+'>').join(' '),2000),
       embeds:[ticketEmbed],
       components:[row]
     });
@@ -342,20 +371,42 @@ async function createTicket(i,cat,answers=[]){
     return i.reply(deny('Ticket creado: '+ch));
   }catch(e){
     logger.error('Ticket creation failed',{error:e.message});
-    return i.reply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.'));
+    if(ch)await ch.delete().catch(()=>{});
+    return i.reply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.')).catch(()=>{});
   }finally{
     locks.delete(key);
   }
 }
 
 async function transcript(ch,t){
-  const xs=[...(await ch.messages.fetch({limit:100})).values()].reverse();
-  const esc=x=>String(x||'').replace(/[&<>]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[s]));
-  return '<!doctype html><html><body>'+
-    '<h1>Ticket #'+t.number+'</h1>'+
-    '<p>Usuario: '+esc(t.userId)+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+t.createdAt.toISOString()+'</p>'+
-    xs.map(m=>'<p><b>'+esc(m.author.tag)+'</b> '+new Date(m.createdTimestamp).toISOString()+
-      '<br>'+esc(m.content||'[embed/archivo]')+'</p>').join('')+
+  const messages=[];
+  let before;
+
+  while(true){
+    const batch=await ch.messages.fetch({limit:100,before});
+    if(!batch.size)break;
+    messages.push(...batch.values());
+    if(batch.size<100)break;
+    before=batch.last()?.id;
+    if(!before)break;
+  }
+
+  const xs=messages.reverse();
+  const esc=x=>String(x??'').replace(/[&<>"]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
+  const answers=t.answers?.length
+    ?'<h2>Respuestas</h2><ul>'+t.answers.map(a=>'<li><b>'+esc(a.label)+'</b>: '+esc(a.answer)+'</li>').join('')+'</ul>'
+    :'';
+
+  return '<!doctype html><html><head><meta charset="utf-8"><title>Ticket #'+esc(t.number)+'</title></head><body>'+
+    '<h1>Ticket #'+esc(t.number)+'</h1>'+
+    '<p>Usuario: '+esc(t.userId)+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+
+    answers+
+    xs.map(m=>{
+      const attachments=[...m.attachments.values()].map(a=>a.url);
+      const content=esc(m.content||'[sin texto]');
+      const files=attachments.length?'<br>Archivos: '+attachments.map(esc).join(' | '):'';
+      return '<p><b>'+esc(m.author?.tag||m.author?.username||'Usuario')+'</b> '+esc(new Date(m.createdTimestamp).toISOString())+'<br>'+content+files+'</p>';
+    }).join('')+
     '</body></html>';
 }
 
@@ -433,7 +484,7 @@ client.on(Events.GuildMemberAdd,async m=>{
     if(c.footer)emb.setFooter({text:renderVariables(c.footer,x)});
 
     await ch.send({
-      content:renderVariables(c.message||'¡Bienvenido {user} a {server}!',x),
+      content:clip(renderVariables(c.message||'¡Bienvenido {user} a {server}!',x),2000),
       embeds:[emb]
     });
     await audit(m.guild.id,m.id,'welcome','sent',ch.id);
@@ -449,11 +500,11 @@ client.on(Events.MessageCreate,async m=>{
     if(!r||!r.response?.trim())return;
 
     const x=context(m.author,m.guild,m.channel);
-    const payload={content:renderVariables(r.response,x)};
+    const payload={content:clip(renderVariables(r.response,x),2000)};
     if(r.embedTitle||r.embedDescription){
       payload.embeds=[new EmbedBuilder()
-        .setTitle(renderVariables(r.embedTitle||'',x))
-        .setDescription(renderVariables(r.embedDescription||r.response,x))
+        .setTitle(clip(renderVariables(r.embedTitle||'',x),256))
+        .setDescription(clip(renderVariables(r.embedDescription||r.response,x),4096))
         .setColor(color(r.embedColor))
         .setTimestamp()];
     }
@@ -503,7 +554,7 @@ client.on(Events.InteractionCreate,async i=>{
       const id=i.customId.split(':')[2];
       const t=await prisma.ticket.findFirst({
         where:{id,guildId:i.guildId},
-        include:{category:true}
+        include:{category:true,answers:true}
       });
       if(!t||t.status!=='open')return i.reply(deny('Ticket no encontrado o cerrado.'));
 
@@ -517,15 +568,25 @@ client.on(Events.InteractionCreate,async i=>{
         return i.reply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
       }
 
-      await prisma.$transaction(async tx=>{
-        await tx.ticket.update({where:{id},data:{claimedById:i.user.id}});
-        await tx.ticketClaim.create({
-          data:{
-            ticket:{connect:{id}},
-            userId:i.user.id
+      try{
+        await prisma.$transaction(async tx=>{
+          const result=await tx.ticket.updateMany({
+            where:{id,status:'open',claimedById:null},
+            data:{claimedById:i.user.id}
+          });
+          if(!result.count){
+            const error=new Error('TICKET_ALREADY_CLAIMED');
+            throw error;
           }
+          await tx.ticketClaim.create({
+            data:{ticketId:id,userId:i.user.id}
+          });
         });
-      });
+      }catch(e){
+        if(e.message==='TICKET_ALREADY_CLAIMED')return i.reply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
+        throw e;
+      }
+
       await audit(i.guildId,i.user.id,'tickets','claimed','#'+t.number);
       return i.reply(deny('Ticket reclamado por '+i.user.toString()+'.'));
     }
@@ -559,7 +620,7 @@ client.on(Events.InteractionCreate,async i=>{
       const id=i.customId.split(':')[2];
       const t=await prisma.ticket.findFirst({
         where:{id,guildId:i.guildId},
-        include:{category:true}
+        include:{category:true,answers:true}
       });
       if(!t)return i.reply(deny('Ticket no encontrado.'));
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
@@ -630,8 +691,8 @@ client.on(Events.InteractionCreate,async i=>{
         category:'vouch'
       });
       const emb=new EmbedBuilder()
-        .setTitle(renderVariables(c.title||'Nueva reseña',x))
-        .setDescription(renderVariables(c.description||'',x))
+        .setTitle(clip(renderVariables(c.title||'Nueva reseña',x),256))
+        .setDescription(clip(renderVariables(c.description||'',x),4096))
         .setColor(color(c.color))
         .setThumbnail(target.displayAvatarURL({size:1024}))
         .setAuthor({
