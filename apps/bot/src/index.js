@@ -606,14 +606,27 @@ client.on(Events.InteractionCreate,async i=>{
         }
       });
 
-      const x=context(target,i.guild,ch);
+      const x=context(target,i.guild,ch,{
+        target:target.toString(),
+        targetid:target.id,
+        targetavatar:target.displayAvatarURL({size:1024,extension:'png'}),
+        client:i.user.toString(),
+        clientid:i.user.id,
+        clientavatar:i.user.displayAvatarURL({size:1024,extension:'png'}),
+        category:'vouch'
+      });
       const emb=new EmbedBuilder()
         .setTitle(renderVariables(c.title||'Nueva reseña',x))
         .setDescription(renderVariables(c.description||'',x))
         .setColor(color(c.color))
-        .setThumbnail(target.displayAvatarURL())
+        .setThumbnail(target.displayAvatarURL({size:1024}))
+        .setAuthor({
+          name:i.user.globalName||i.user.username,
+          iconURL:i.user.displayAvatarURL({size:256})
+        })
         .addFields(
           {name:'Usuario',value:target.toString(),inline:true},
+          {name:'Cliente',value:i.user.toString(),inline:true},
           {name:'Tipo',value:type,inline:true},
           {name:'Rating',value:'⭐'.repeat(rating),inline:true},
           {name:'Reseña',value:text.slice(0,1024)}
@@ -621,6 +634,7 @@ client.on(Events.InteractionCreate,async i=>{
         .setTimestamp();
 
       if(c.image)emb.setImage(renderVariables(c.image,x));
+      if(c.thumbnail)emb.setThumbnail(renderVariables(c.thumbnail,x));
       if(c.footer)emb.setFooter({text:renderVariables(c.footer,x)});
 
       await ch.send({embeds:[emb]});
