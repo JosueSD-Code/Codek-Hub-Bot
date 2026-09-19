@@ -154,7 +154,14 @@ async function logToChannel(g,title,description){
 async function nextNumber(guildId,categoryId){
   return prisma.$transaction(async tx=>{
     const k='codek:'+guildId+':'+categoryId;
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${k}))`;
+    let locked=false;
+
+    while(!locked){
+      const rows=await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${k})) AS locked`;
+      locked=Boolean(rows[0]?.locked);
+      if(!locked)await new Promise(resolve=>setTimeout(resolve,25));
+    }
+
     const last=await tx.ticket.findFirst({
       where:{guildId,categoryId},
       orderBy:{number:'desc'},
@@ -554,7 +561,7 @@ client.on(Events.InteractionCreate,async i=>{
 
       await prisma.vouch.create({
         data:{
-          guild:{connect:{id:i.guildId}},
+          guildId:i.guildId,
           targetId,
           reviewerId:i.user.id,
           reviewType:type,
