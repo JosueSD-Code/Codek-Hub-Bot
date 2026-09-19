@@ -127,11 +127,12 @@ const roleIds=(g,v)=>String(v||'').split(',')
   .filter(id=>g?.roles.cache.has(id));
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-')
-  .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';\nconst normalizeEmoji=(guild,value)=>{
+  .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
+const normalizeEmoji=(guild,value)=>{
   const raw=String(value||'').trim();
   if(!raw)return null;
 
-  const custom=raw.match(/^<a?:([\\w~]+):(\\d+)>$/);
+  const custom=raw.match(/^<a?:([\w~]+):(\d+)>$/);
   if(custom){
     const emoji=guild?.emojis?.cache?.get(custom[2]);
     if(!emoji)return null;
