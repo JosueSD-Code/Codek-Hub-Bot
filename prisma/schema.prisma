@@ -1,160 +1,186 @@
 generator client { provider = "prisma-client-js" }
 datasource db { provider = "postgresql" url = env("DATABASE_URL") }
+
 model Guild {
- id String @id
- name String?
- icon String?
- ownerId String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
- panels TicketPanel[]
- welcomeConfig WelcomeConfig?
- vouchConfig VouchConfig?
- presenceConfig PresenceConfig?
- autoResponders AutoResponder[]
- auditLogs AuditLog[]
+  id String @id
+  name String?
+  icon String?
+  ownerId String?
+  logChannelId String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  panels TicketPanel[]
+  welcomeConfig WelcomeConfig?
+  vouchConfig VouchConfig?
+  presenceConfig PresenceConfig?
+  autoResponders AutoResponder[]
+  auditLogs AuditLog[]
 }
+
 model TicketPanel {
- id String @id @default(cuid())
- guildId String
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- name String
- channelId String
- title String?
- description String?
- color String?
- image String?
- thumbnail String?
- footer String?
- active Boolean @default(true)
- categories TicketCategory[]
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  guildId String
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  name String
+  channelId String
+  title String?
+  description String?
+  color String?
+  image String?
+  thumbnail String?
+  footer String?
+  active Boolean @default(true)
+  categories TicketCategory[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model TicketCategory {
- id String @id @default(cuid())
- panelId String
- panel TicketPanel @relation(fields:[panelId],references:[id],onDelete:Cascade)
- name String
- description String?
- emoji String?
- supportRoleIds String[]
- discordCategoryId String?
- questions TicketQuestion[]
- tickets Ticket[]
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  panelId String
+  panel TicketPanel @relation(fields: [panelId], references: [id], onDelete: Cascade)
+  name String
+  description String?
+  emoji String?
+  supportRoleIds String[]
+  discordCategoryId String?
+  questions TicketQuestion[]
+  tickets Ticket[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model TicketQuestion {
- id String @id @default(cuid())
- categoryId String
- category TicketCategory @relation(fields:[categoryId],references:[id],onDelete:Cascade)
- label String
- placeholder String?
- required Boolean @default(true)
- createdAt DateTime @default(now())
+  id String @id @default(cuid())
+  categoryId String
+  category TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  label String
+  placeholder String?
+  required Boolean @default(true)
+  createdAt DateTime @default(now())
 }
+
 model Ticket {
- id String @id @default(cuid())
- guildId String
- categoryId String
- category TicketCategory @relation(fields:[categoryId],references:[id],onDelete:Cascade)
- userId String
- channelId String @unique
- number Int
- status String @default("open")
- claimedById String?
- createdAt DateTime @default(now())
- closedAt DateTime?
- answers TicketAnswer[]
- transcript TicketTranscript?
- @@unique([guildId,categoryId,number])
+  id String @id @default(cuid())
+  guildId String
+  categoryId String
+  category TicketCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  userId String
+  channelId String @unique
+  number Int
+  status String @default("open")
+  claimedById String?
+  createdAt DateTime @default(now())
+  closedAt DateTime?
+  answers TicketAnswer[]
+  claims TicketClaim[]
+  transcript TicketTranscript?
+  @@unique([guildId, categoryId, number])
 }
+
 model TicketAnswer {
- id String @id @default(cuid())
- ticketId String
- ticket Ticket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
- label String
- answer String
+  id String @id @default(cuid())
+  ticketId String
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  label String
+  answer String
 }
+
+model TicketClaim {
+  id String @id @default(cuid())
+  ticketId String
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  userId String
+  createdAt DateTime @default(now())
+}
+
 model TicketTranscript {
- id String @id @default(cuid())
- ticketId String @unique
- ticket Ticket @relation(fields:[ticketId],references:[id],onDelete:Cascade)
- html String
- createdAt DateTime @default(now())
+  id String @id @default(cuid())
+  ticketId String @unique
+  ticket Ticket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  html String
+  createdAt DateTime @default(now())
 }
+
 model WelcomeConfig {
- id String @id @default(cuid())
- guildId String @unique
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- enabled Boolean @default(false)
- channelId String?
- message String?
- title String?
- description String?
- color String?
- image String?
- thumbnail String?
- footer String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  guildId String @unique
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled Boolean @default(false)
+  channelId String?
+  message String?
+  title String?
+  description String?
+  color String?
+  image String?
+  thumbnail String?
+  footer String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model VouchConfig {
- id String @id @default(cuid())
- guildId String @unique
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- enabled Boolean @default(false)
- channelId String?
- allowedRoleIds String[]
- cooldown Int @default(60)
- title String?
- description String?
- color String?
- image String?
- thumbnail String?
- footer String?
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  guildId String @unique
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled Boolean @default(false)
+  channelId String?
+  allowedRoleIds String[]
+  cooldown Int @default(60)
+  title String?
+  description String?
+  color String?
+  image String?
+  thumbnail String?
+  footer String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model Vouch {
- id String @id @default(cuid())
- guildId String
- targetId String
- reviewerId String
- reviewType String
- rating Int
- text String
- createdAt DateTime @default(now())
+  id String @id @default(cuid())
+  guildId String
+  targetId String
+  reviewerId String
+  reviewType String
+  rating Int
+  text String
+  createdAt DateTime @default(now())
 }
+
 model AutoResponder {
- id String @id @default(cuid())
- guildId String
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- trigger String
- response String
- matchType String @default("contains")
- enabled Boolean @default(true)
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  guildId String
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  trigger String
+  response String
+  matchType String @default("contains")
+  embedTitle String?
+  embedDescription String?
+  embedColor String?
+  enabled Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model PresenceConfig {
- id String @id @default(cuid())
- guildId String @unique
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- enabled Boolean @default(false)
- type String @default("Watching")
- text String @default("Codek Hub")
- createdAt DateTime @default(now())
- updatedAt DateTime @updatedAt
+  id String @id @default(cuid())
+  guildId String @unique
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  enabled Boolean @default(false)
+  type String @default("Watching")
+  text String @default("Codek Hub")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
+
 model AuditLog {
- id String @id @default(cuid())
- guildId String
- guild Guild @relation(fields:[guildId],references:[id],onDelete:Cascade)
- userId String
- module String
- action String
- details String?
- createdAt DateTime @default(now())
+  id String @id @default(cuid())
+  guildId String
+  guild Guild @relation(fields: [guildId], references: [id], onDelete: Cascade)
+  userId String
+  module String
+  action String
+  details String?
+  createdAt DateTime @default(now())
 }
