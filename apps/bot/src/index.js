@@ -123,6 +123,7 @@ const color=v=>{
 };
 const isAdmin=i=>Boolean(i.memberPermissions?.has(ADMIN));
 const clip=(value,max)=>String(value??'').slice(0,max);
+const safeUrl=value=>{try{const u=new URL(String(value??''));return /^https?:$/.test(u.protocol)?u.toString():null;}catch{return null;}};
 const roleIds=(g,v)=>String(v||'').split(',')
   .map(x=>x.trim().replace(/[<@&>]/g,''))
   .filter(id=>g?.roles.cache.has(id));
@@ -474,14 +475,16 @@ client.on(Events.GuildMemberAdd,async m=>{
 
     const x=context(m.user,m.guild,ch);
     const emb=new EmbedBuilder()
-      .setTitle(renderVariables(c.title||'¡Bienvenido!',x))
-      .setDescription(renderVariables(c.description||'',x))
+      .setTitle(clip(renderVariables(c.title||'¡Bienvenido!',x),256))
+      .setDescription(clip(renderVariables(c.description||'',x),4096))
       .setColor(color(c.color))
       .setTimestamp();
 
-    if(c.image)emb.setImage(renderVariables(c.image,x));
-    if(c.thumbnail)emb.setThumbnail(renderVariables(c.thumbnail,x));
-    if(c.footer)emb.setFooter({text:renderVariables(c.footer,x)});
+    const welcomeImage=safeUrl(renderVariables(c.image||'',x));
+    const welcomeThumbnail=safeUrl(renderVariables(c.thumbnail||'',x));
+    if(welcomeImage)emb.setImage(welcomeImage);
+    if(welcomeThumbnail)emb.setThumbnail(welcomeThumbnail);
+    if(c.footer)emb.setFooter({text:clip(renderVariables(c.footer,x),2048)});
 
     await ch.send({
       content:clip(renderVariables(c.message||'¡Bienvenido {user} a {server}!',x),2000),
@@ -658,7 +661,13 @@ client.on(Events.InteractionCreate,async i=>{
         return i.reply(deny('No tienes permiso para usar /vouch.'));
       }
 
-      const last=cooldowns.get(i.guildId+':'+i.user.id)||0;
+      const memoryLast=cooldowns.get(i.guildId+':'+i.user.id)||0;
+      const dbLast=await prisma.vouch.findFirst({
+        where:{guildId:i.guildId,reviewerId:i.user.id},
+        orderBy:{createdAt:'desc'},
+        select:{createdAt:true}
+      });
+      const last=Math.max(memoryLast,dbLast?.createdAt?.getTime()||0);
       if(Date.now()-last<c.cooldown*1000)return i.reply(deny('Espera antes de enviar otro vouch.'));
 
       const duplicate=await prisma.vouch.findFirst({
@@ -667,8 +676,9 @@ client.on(Events.InteractionCreate,async i=>{
       if(duplicate)return i.reply(deny('Ya has dejado un vouch para este usuario.'));
 
       const target=await client.users.fetch(targetId).catch(()=>null);
+      const targetMember=target?await i.guild.members.fetch(target.id).catch(()=>null):null;
       const ch=c.channelId?i.guild.channels.cache.get(c.channelId):null;
-      if(!target||!ch?.isTextBased())return i.reply(deny('El usuario o canal de vouches ya no existe.'));
+      if(!target||!targetMember||target.bot||!ch?.isTextBased())return i.reply(deny('El usuario o canal de vouches ya no existe o el usuario no pertenece al servidor.'));
 
       await prisma.vouch.create({
         data:{
@@ -708,9 +718,11 @@ client.on(Events.InteractionCreate,async i=>{
         )
         .setTimestamp();
 
-      if(c.image)emb.setImage(renderVariables(c.image,x));
-      if(c.thumbnail)emb.setThumbnail(renderVariables(c.thumbnail,x));
-      if(c.footer)emb.setFooter({text:renderVariables(c.footer,x)});
+      const vouchImage=safeUrl(renderVariables(c.image||'',x));
+      const vouchThumbnail=safeUrl(renderVariables(c.thumbnail||'',x));
+      if(vouchImage)emb.setImage(vouchImage);
+      if(vouchThumbnail)emb.setThumbnail(vouchThumbnail);
+      if(c.footer)emb.setFooter({text:clip(renderVariables(c.footer,x),2048)});
 
       await ch.send({embeds:[emb]});
       cooldowns.set(i.guildId+':'+i.user.id,Date.now());
@@ -806,7 +818,13 @@ client.on(Events.InteractionCreate,async i=>{
         return i.reply(deny('No tienes permiso para usar /vouch.'));
       }
 
-      const last=cooldowns.get(i.guildId+':'+i.user.id)||0;
+      const memoryLast=cooldowns.get(i.guildId+':'+i.user.id)||0;
+      const dbLast=await prisma.vouch.findFirst({
+        where:{guildId:i.guildId,reviewerId:i.user.id},
+        orderBy:{createdAt:'desc'},
+        select:{createdAt:true}
+      });
+      const last=Math.max(memoryLast,dbLast?.createdAt?.getTime()||0);
       if(Date.now()-last<c.cooldown*1000)return i.reply(deny('Espera antes de enviar otro vouch.'));
 
       const target=i.options.getUser('member');
@@ -1022,13 +1040,15 @@ client.on(Events.InteractionCreate,async i=>{
         .addOptions(options);
 
       const emb=new EmbedBuilder()
-        .setTitle(p.title||p.name)
-        .setDescription(p.description||'Selecciona una categoría.')
+        .setTitle(clip(p.title||p.name,256))
+        .setDescription(clip(p.description||'Selecciona una categoría.',4096))
         .setColor(color(p.color));
 
-      if(p.image)emb.setImage(p.image);
-      if(p.thumbnail)emb.setThumbnail(p.thumbnail);
-      if(p.footer)emb.setFooter({text:p.footer});
+      const panelImage=safeUrl(p.image);
+      const panelThumbnail=safeUrl(p.thumbnail);
+      if(panelImage)emb.setImage(panelImage);
+      if(panelThumbnail)emb.setThumbnail(panelThumbnail);
+      if(p.footer)emb.setFooter({text:clip(p.footer,2048)});
 
       await ch.send({
         embeds:[emb],
