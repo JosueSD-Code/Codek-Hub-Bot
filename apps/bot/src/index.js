@@ -128,16 +128,33 @@ const roleIds=(g,v)=>String(v||'').split(',')
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-')
   .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
-const context=(u,g,ch)=>({
-  user:u?.toString?.()||'user',
-  username:u?.username||'user',
-  displayname:u?.globalName||u?.displayName||u?.username||'user',
-  userid:u?.id||'0',
-  server:g?.name||'server',
-  membercount:g?.memberCount??0,
-  channel:ch?.toString?.()||'channel',
-  channelname:ch?.name||'channel'
-});
+const context=(u,g,ch,extra={})=>{
+  const avatar=u?.displayAvatarURL?.({size:1024,extension:'png'})||u?.displayAvatarURL?.()||'';
+  const guildIcon=g?.iconURL?.({size:1024,extension:'png'})||'';
+  return {
+    user:u?.toString?.()||'user',
+    mention:u?.toString?.()||'user',
+    username:u?.username||'user',
+    tag:u?.tag||u?.username||'user',
+    usertag:u?.tag||u?.username||'user',
+    displayname:u?.globalName||u?.displayName||u?.username||'user',
+    displayname_raw:u?.globalName||u?.displayName||u?.username||'user',
+    userid:u?.id||'0',
+    useravatar:avatar,
+    avatar,
+    user_avatar:avatar,
+    server:g?.name||'server',
+    guild:g?.name||'server',
+    membercount:g?.memberCount??0,
+    guildid:g?.id||'0',
+    guildicon:guildIcon,
+    servericon:guildIcon,
+    channel:ch?.toString?.()||'channel',
+    channelname:ch?.name||'channel',
+    channelid:ch?.id||'0',
+    ...extra
+  };
+};
 
 async function logToChannel(g,title,description){
   try{
