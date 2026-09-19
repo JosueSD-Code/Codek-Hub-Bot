@@ -40,7 +40,11 @@ export async function findAutoResponder(content,guildId){
 
 export async function audit(guildId,userId,module,action,details){
   if(!guildId)return null;
-  await ensureGuild({id:guildId,name:null,icon:null,ownerId:null}).catch(()=>{});
+  await prisma.guild.upsert({
+    where:{id:guildId},
+    update:{},
+    create:{id:guildId}
+  }).catch(()=>{});
   return prisma.auditLog.create({
     data:{
       guild:{connect:{id:guildId}},
