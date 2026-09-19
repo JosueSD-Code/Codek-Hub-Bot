@@ -1,426 +1,131 @@
-import http from 'http';
 import {
-  Client,
-  Events,
-  GatewayIntentBits,
-  EmbedBuilder,
-  REST,
-  Routes,
-  SlashCommandBuilder,
-  ActionRowBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, EmbedBuilder, Events,
+  GatewayIntentBits, ModalBuilder, PermissionFlagsBits, REST, Routes,
+  SlashCommandBuilder, StringSelectMenuBuilder, TextInputBuilder, TextInputStyle,
+  ChannelType, ActivityType
 } from 'discord.js';
-import { loadEnvironment, logger, renderVariables } from '../../../packages/shared/src/index.js';
-import { findMatchingAutoResponder, listAutoRespondersForGuild, prisma } from '../../../packages/shared/src/db.js';
+import { loadEnvironment, logger, renderVariables, prisma, ensureGuild, getGuild, findAutoResponder, audit } from '../../../packages/shared/src/index.js';
 
 const env = loadEnvironment();
+const client = new Client({ intents: [
+  GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages,
+  GatewayIntentBits.MessageContent, GatewayIntentBits.GuildPresences
+]});
+const cooldowns = new Map();
+const ticketLocks = new Set();
 
-if (!env.discordToken) {
-  logger.warn('DISCORD_TOKEN is not set. The bot will not start until you provide a token in your environment.');
-  process.exit(0);
+const admin = PermissionFlagsBits.Administrator;
+const commands = [
+  new SlashCommandBuilder().setName('tickets').setDescription('Configura el sistema de tickets.').setDefaultMemberPermissions(admin)
+    .addSubcommand(s=>s.setName('panel').setDescription('Crea un panel de tickets.').addStringOption(o=>o.setName('nombre').setDescription('Nombre interno').setRequired(true)).addChannelOption(o=>o.setName('canal').setDescription('Canal donde se publicará').addChannelTypes(ChannelType.GuildText).setRequired(true)))
+    .addSubcommand(s=>s.setName('categoria').setDescription('Añade una categoría a un panel.').addStringOption(o=>o.setName('panel').setDescription('ID del panel').setRequired(true)).addStringOption(o=>o.setName('nombre').setDescription('Nombre').setRequired(true)).addStringOption(o=>o.setName('emoji').setDescription('Emoji').setRequired(false)).addRoleOption(o=>o.setName('staff').setDescription('Rol de soporte').setRequired(true)))
+    .addSubcommand(s=>s.setName('publicar').setDescription('Publica un panel existente.').addStringOption(o=>o.setName('panel').setDescription('ID del panel').setRequired(true))),
+  new SlashCommandBuilder().setName('welcome').setDescription('Configura bienvenida.').setDefaultMemberPermissions(admin)
+    .addSubcommand(s=>s.setName('set').setDescription('Configura bienvenida.').addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true)).addStringOption(o=>o.setName('mensaje').setDescription('Mensaje').setRequired(true))),
+  new SlashCommandBuilder().setName('vouch-config').setDescription('Configura vouches.').setDefaultMemberPermissions(admin)
+    .addSubcommand(s=>s.setName('set').setDescription('Configura vouches.').addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true)).addRoleOption(o=>o.setName('rol').setDescription('Rol permitido').setRequired(false)).addIntegerOption(o=>o.setName('cooldown').setDescription('Cooldown en segundos').setMinValue(0).setRequired(false)))
+    .addSubcommand(s=>s.setName('reset').setDescription('Desactiva vouches.')),
+  new SlashCommandBuilder().setName('vouch').setDescription('Deja una reseña a un miembro.')
+    .addUserOption(o=>o.setName('member').setDescription('Miembro').setRequired(true)).addStringOption(o=>o.setName('tipo').setDescription('Tipo de reseña').setRequired(true).addChoices({name:'Legit',value:'Legit'},{name:'No Legit',value:'No Legit'})).addIntegerOption(o=>o.setName('rating').setDescription('1 a 5').setMinValue(1).setMaxValue(5).setRequired(true)),
+  new SlashCommandBuilder().setName('autoresponder').setDescription('Gestiona autoresponders.').setDefaultMemberPermissions(admin)
+    .addSubcommand(s=>s.setName('add').setDescription('Añade uno.').addStringOption(o=>o.setName('trigger').setDescription('Disparador').setRequired(true)).addStringOption(o=>o.setName('respuesta').setDescription('Respuesta').setRequired(true)).addStringOption(o=>o.setName('modo').setDescription('Coincidencia').addChoices({name:'Contiene',value:'contains'},{name:'Exacta',value:'exact'}).setRequired(false)))
+    .addSubcommand(s=>s.setName('remove').setDescription('Elimina uno.').addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
+    .addSubcommand(s=>s.setName('list').setDescription('Lista autoresponders.')),
+  new SlashCommandBuilder().setName('presence').setDescription('Configura la Rich Presence del bot.').setDefaultMemberPermissions(admin)
+    .addSubcommand(s=>s.setName('set').setDescription('Establece actividad.').addStringOption(o=>o.setName('tipo').setDescription('Tipo').addChoices({name:'Playing',value:'Playing'},{name:'Watching',value:'Watching'},{name:'Listening',value:'Listening'},{name:'Streaming',value:'Streaming'}).setRequired(true)).addStringOption(o=>o.setName('texto').setDescription('Texto').setRequired(true)))
+    .addSubcommand(s=>s.setName('reset').setDescription('Restablece actividad.')),
+  new SlashCommandBuilder().setName('variables').setDescription('Muestra las variables disponibles.')
+];
+async function deploy() {
+  const rest = new REST({version:'10'}).setToken(env.DISCORD_TOKEN);
+  const route = env.DEV_GUILD_ID ? Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID, env.DEV_GUILD_ID) : Routes.applicationCommands(env.DISCORD_CLIENT_ID);
+  await rest.put(route, {body: commands.map(c=>c.toJSON())});
 }
+async function applyPresence() {
+  const row = await prisma.presenceConfig.findFirst({where:{enabled:true}, orderBy:{updatedAt:'desc'}});
+  if (!row) return client.user?.setPresence({activities:[],status:'online'});
+  const typeMap = {Playing:ActivityType.Playing, Watching:ActivityType.Watching, Listening:ActivityType.Listening, Streaming:ActivityType.Streaming};
+  client.user?.setPresence({activities:[{name:row.text,type:typeMap[row.type] ?? ActivityType.Watching}],status:'online'});
+}
+async function getConfig(guildId) {
+  await ensureGuild(client.guilds.cache.get(guildId));
+  return getGuild(guildId);
+}
+function ephemeral(content) { return {content, flags:64}; }
+function safeColor(value) { const n=Number.parseInt(String(value||'0x5865F2').replace('#',''),16); return Number.isFinite(n)?n:0x5865F2; }
 
-const spamTracker = new Map();
-const raidTracker = new Map();
-const vouchCooldowns = new Map();
-
-const VOUCH_COMMAND = new SlashCommandBuilder()
-  .setName('vouch')
-  .setDescription('Leave a real vouch for a member in this server.')
-  .addUserOption((option) => option.setName('member').setDescription('Member to review').setRequired(true))
-  .addIntegerOption((option) => option.setName('rating').setDescription('Rating from 1 to 5').setRequired(true).setMinValue(1).setMaxValue(5))
-  .addStringOption((option) => option.setName('review').setDescription('Optional review summary').setRequired(false));
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.GuildPresences,
-    GatewayIntentBits.MessageContent,
-  ],
-});
-
-const botApiServer = http.createServer((req, res) => {
-  if (req.url === '/api/bot/guilds') {
-    const guilds = client.guilds.cache.map((guild) => ({
-      id: guild.id,
-      name: guild.name,
-      icon: guild.icon,
-      ownerId: guild.ownerId,
-      memberCount: guild.memberCount,
-      permissions: guild.members.me ? Number(guild.members.me.permissions ?? 0) : null,
-    }));
-
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify(guilds));
-    return;
-  }
-
-  res.writeHead(200, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ ok: true, service: 'codek-hub-bot' }));
-});
-
-botApiServer.listen(env.botApiPort || 3011, '0.0.0.0', () => {
-  logger.info('Bot API gateway started', { port: env.botApiPort || 3011 });
-});
-
-async function fetchGuildModuleSettings(guildId) {
-  if (!guildId) {
-    return null;
-  }
-
+async function createTicket(interaction, category) {
+  const key = guildKey = interaction.guildId + ':' + category.id + ':' + interaction.user.id;
+  if (ticketLocks.has(key)) return interaction.reply(ephemeral('Ya se está creando tu ticket.'));
+  ticketLocks.add(key);
   try {
-    return await prisma.guild.findUnique({
-      where: { id: String(guildId) },
-      include: {
-        config: true,
-        welcomeConfig: true,
-        vouchConfig: true,
-        automodConfig: true,
-        antispamConfig: true,
-        antiraidConfig: true,
-        logConfig: true,
-      },
-    });
-  } catch (error) {
-    return null;
-  }
+    const existing = await prisma.ticket.findFirst({where:{guildId:interaction.guildId,categoryId:category.id,userId:interaction.user.id,status:'open'}});
+    if (existing) return interaction.reply(ephemeral('Ya tienes un ticket abierto para esta categoría.'));
+    const count = await prisma.ticket.count({where:{guildId:interaction.guildId,categoryId:category.id}});
+    const number = count + 1;
+    const parent = category.discordCategoryId ? interaction.guild.channels.cache.get(category.discordCategoryId) : null;
+    const support = category.supportRoleIds.map(String);
+    const channel = await interaction.guild.channels.create({name:category.name.toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,70)+'-'+number,type:ChannelType.GuildText,parent:parent?.id,permissionOverwrites:[
+      {id:interaction.guild.roles.everyone.id,deny:['ViewChannel']},
+      {id:interaction.user.id,allow:['ViewChannel','SendMessages','ReadMessageHistory']},
+      ...support.map(id=>({id,allow:['ViewChannel','SendMessages','ReadMessageHistory','ManageMessages']}))
+    ]});
+    const ticket=await prisma.ticket.create({data:{guildId:interaction.guildId,categoryId:category.id,userId:interaction.user.id,channelId:channel.id,number}});
+    const mentions=support.map(id=>'<@&'+id+'>').join(' ');
+    const embed=new EmbedBuilder().setTitle('Ticket • '+category.name).setDescription('Hola <@'+interaction.user.id+'>, tu ticket ha sido creado.\n\n'+(category.description||'Un miembro del equipo te atenderá pronto.')).setColor(0x5865F2).addFields({name:'Número',value:String(number),inline:true},{name:'Categoría',value:category.name,inline:true}).setTimestamp();
+    const row=new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ticket:claim:'+ticket.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('ticket:close:'+ticket.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger));
+    await channel.send({content:'<@'+interaction.user.id+'> '+mentions,embeds:[embed],components:[row]});
+    await audit(interaction.guildId,interaction.user.id,'tickets','created',String(ticket.id));
+    await interaction.reply(ephemeral('Ticket creado: '+channel));
+  } finally { ticketLocks.delete(key); }
 }
-
-async function sendAuditMessage(guildId, content) {
-  if (!guildId || !content) {
-    return;
-  }
-
+async function closeTicket(interaction,ticket) {
+  if (!ticket || ticket.status !== 'open') return interaction.reply(ephemeral('Este ticket ya está cerrado.'));
+  const messages=[]; let before;
+  for(let i=0;i<10;i++){ const batch=await interaction.channel.messages.fetch({limit:100,before}).catch(()=>new Map()); if(!batch.size) break; messages.push(...batch.values()); before=batch.last()?.id; if(batch.size<100) break; }
+  messages.reverse();
+  const esc=s=>String(s??'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  const html='<!doctype html><html><head><meta charset="utf-8"><title>Ticket '+ticket.number+'</title></head><body><h1>Ticket #'+ticket.number+'</h1><p>Usuario: '+esc(ticket.userId)+' | Categoría: '+esc(ticket.category.name)+'</p>'+messages.map(m=>'<p><b>'+esc(m.author.tag)+'</b> <small>'+esc(m.createdAt.toISOString())+'</small><br>'+esc(m.content)+'</p>').join('')+'</body></html>';
+  await prisma.ticket.update({where:{id:ticket.id},data:{status:'closed',closedAt:new Date()}});
+  await prisma.ticketTranscript.upsert({where:{ticketId:ticket.id},update:{html},create:{ticketId:ticket.id,html}});
+  await audit(interaction.guildId,interaction.user.id,'tickets','closed',String(ticket.id));
+  await interaction.reply(ephemeral('Ticket cerrado. El canal se eliminará en unos segundos.'));
+  setTimeout(()=>interaction.channel.delete().catch(()=>{}),3000);
+}
+client.once(Events.ClientReady, async c=>{ await deploy(); await applyPresence(); logger.info('Codek Hub conectado',{user:c.user.tag,guilds:c.guilds.cache.size}); });
+client.on(Events.GuildCreate,g=>ensureGuild(g).catch(()=>{}));
+client.on(Events.GuildMemberAdd,async member=>{
+  const cfg=await prisma.welcomeConfig.findUnique({where:{guildId:member.guild.id}}).catch(()=>null);
+  if(!cfg?.enabled||!cfg.channelId) return;
+  const ch=member.guild.channels.cache.get(cfg.channelId); if(!ch?.isTextBased()) return;
+  const ctx={user:member.toString(),username:member.user.username,displayname:member.displayName,userid:member.id,server:member.guild.name,membercount:member.guild.memberCount};
+  const content=renderVariables(cfg.message||'¡Bienvenido {user} a {server}!',ctx);
+  const embed=new EmbedBuilder().setTitle(cfg.title||'Bienvenido').setDescription(renderVariables(cfg.description||content,ctx)).setColor(safeColor(cfg.color)).setThumbnail(cfg.thumbnail||member.displayAvatarURL()).setTimestamp();
+  if(cfg.image) embed.setImage(cfg.image); if(cfg.footer) embed.setFooter({text:cfg.footer});
+  await ch.send({content:cfg.message?renderVariables(cfg.message,ctx):undefined,embeds:[embed]}).catch(()=>{});
+});
+client.on(Events.MessageCreate,async message=>{
+  if(message.author.bot||!message.guildId) return;
+  const responder=await findAutoResponder(message.content,message.guildId).catch(()=>null);
+  if(!responder||!String(responder.response).trim()) return;
+  const rendered=renderVariables(responder.response,{user:message.author.toString(),username:message.author.username,displayname:message.member?.displayName,userid:message.author.id,server:message.guild.name,membercount:message.guild.memberCount,channel:message.channel.toString(),channelname:message.channel.name});
+  if(!rendered.trim()) return;
+  await message.reply(rendered).catch(e=>logger.warn('Autoresponder failed',{error:e.message}));
+});
+client.on(Events.InteractionCreate,async interaction=>{
   try {
-    const settings = await fetchGuildModuleSettings(guildId);
-    const channelId = settings?.logConfig?.channelId;
-    if (!channelId) {
-      return;
-    }
-
-    const guild = client.guilds.cache.get(String(guildId));
-    if (!guild) {
-      return;
-    }
-
-    const channel = guild.channels.cache.get(String(channelId)) || (await guild.channels.fetch(String(channelId)).catch(() => null));
-    if (channel && channel.isTextBased()) {
-      await channel.send(content);
-    }
-  } catch (error) {
-    logger.warn('Unable to send guild audit log message', { error: error.message, guildId });
-  }
-}
-
-async function registerSlashCommands() {
-  if (!env.discordClientId || !env.discordToken) {
-    return;
-  }
-
-  try {
-    const rest = new REST({ version: '10' }).setToken(env.discordToken);
-    await rest.put(Routes.applicationCommands(env.discordClientId), {
-      body: [VOUCH_COMMAND.toJSON()],
-    });
-    logger.info('Slash commands deployed', { command: 'vouch' });
-  } catch (error) {
-    logger.error('Unable to register slash commands', { error: error.message });
-  }
-}
-
-async function submitVouch(interaction, { targetId, rating, review }) {
-  if (!interaction.guild || !interaction.member || !targetId) {
-    return;
-  }
-
-  const targetMember = await interaction.guild.members.fetch(targetId).catch(() => null);
-  if (!targetMember) {
-    await interaction.reply({ content: 'That member is not available in this server.', ephemeral: true });
-    return;
-  }
-
-  const guildSettings = await fetchGuildModuleSettings(interaction.guildId);
-  const vouchConfig = guildSettings?.vouchConfig;
-  if (!vouchConfig?.enabled) {
-    await interaction.reply({ content: 'Vouch is not enabled for this guild.', ephemeral: true });
-    return;
-  }
-
-  const allowedRoleIds = Array.isArray(vouchConfig.allowedRoleIds) ? vouchConfig.allowedRoleIds.map(String) : [];
-  if (allowedRoleIds.length > 0) {
-    const hasPermission = interaction.member.roles.cache.some((role) => allowedRoleIds.includes(role.id));
-    if (!hasPermission) {
-      await interaction.reply({ content: 'You do not have permission to leave a vouch in this guild.', ephemeral: true });
-      return;
-    }
-  }
-
-  const cooldownSeconds = Number(vouchConfig.cooldown ?? 60);
-  const key = `${interaction.guildId}:${interaction.user.id}`;
-  const lastTimestamp = vouchCooldowns.get(key) || 0;
-  const now = Date.now();
-  if (now - lastTimestamp < cooldownSeconds * 1000) {
-    await interaction.reply({ content: `Vouch cooldown is active. Please wait ${Math.ceil((cooldownSeconds * 1000 - (now - lastTimestamp)) / 1000)} seconds.`, ephemeral: true });
-    return;
-  }
-
-  const finalRating = Math.max(1, Math.min(5, Number(rating) || 5));
-  const finalReview = String(review || 'No review provided').trim() || 'No review provided';
-
-  await prisma.vouch.create({
-    data: {
-      guildId: interaction.guildId,
-      userId: targetMember.id,
-      reviewerId: interaction.user.id,
-      review: finalReview,
-      rating: finalRating,
-      note: `review:${finalRating}`,
-    },
-  });
-
-  vouchCooldowns.set(key, now);
-
-  const channelId = vouchConfig.channelId ? String(vouchConfig.channelId) : interaction.channelId;
-  const channel = interaction.guild.channels.cache.get(channelId) || (await interaction.guild.channels.fetch(channelId).catch(() => null));
-  const embed = new EmbedBuilder()
-    .setTitle(`Vouch • ${finalRating}/5`)
-    .setDescription(`**${targetMember.user.tag}** received a review from **${interaction.user.tag}**.`)
-    .setColor(finalRating >= 4 ? 0x22c55e : finalRating === 3 ? 0xfbbf24 : 0xef4444)
-    .setThumbnail(targetMember.user.displayAvatarURL({ extension: 'png', size: 128 }))
-    .addFields(
-      { name: 'Review', value: finalReview, inline: false },
-      { name: 'Rating', value: `${'⭐'.repeat(finalRating)} (${finalRating}/5)`, inline: true },
-      { name: 'Reviewer', value: `<@${interaction.user.id}>`, inline: true },
-    )
-    .setTimestamp();
-
-  if (channel && channel.isTextBased()) {
-    await channel.send({ embeds: [embed] });
-  }
-
-  await interaction.reply({ content: `Vouch recorded for ${targetMember.user.tag} with a ${finalRating}/5 rating.`, ephemeral: true });
-}
-
-client.once(Events.ClientReady, () => {
-  logger.info('Discord bot connected', { username: client.user.username, id: client.user.id });
-  registerSlashCommands();
+    if(interaction.isStringSelectMenu()&&interaction.customId.startsWith('ticket:select:')) { const cat=await prisma.ticketCategory.findUnique({where:{id:interaction.values[0]}}); if(cat) return createTicket(interaction,cat); }
+    if(interaction.isButton()&&interaction.customId.startsWith('ticket:claim:')) { const id=interaction.customId.split(':')[2]; const t=await prisma.ticket.findUnique({where:{id}}); if(!t) return interaction.reply(ephemeral('Ticket no encontrado.')); await prisma.ticket.update({where:{id},data:{claimedById:interaction.user.id}}); return interaction.reply(ephemeral('Ticket reclamado por '+interaction.user+'.')); }
+    if(interaction.isButton()&&interaction.customId.startsWith('ticket:close:')) { const id=interaction.customId.split(':')[2]; const t=await prisma.ticket.findUnique({where:{id},include:{category:true}}); return closeTicket(interaction,t); }
+    if(interaction.isModalSubmit()&&interaction.customId.startsWith('vouch:')) { const [,targetId,type,rating]=interaction.customId.split(':'); const text=interaction.fields.getTextInputValue('text').trim(); if(!text) return interaction.reply(ephemeral('La reseña no puede estar vacía.')); const cfg=await prisma.vouchConfig.findUnique({where:{guildId:interaction.guildId}}); if(!cfg?.enabled) return interaction.reply(ephemeral('Los vouches están desactivados.')); await prisma.vouch.create({data:{guildId:interaction.guildId,targetId,reviewerId:interaction.user.id,reviewType:type,rating:Number(rating),text}}); const ch=cfg.channelId?interaction.guild.channels.cache.get(cfg.channelId):interaction.channel; const embed=new EmbedBuilder().setTitle(cfg.title||'Nueva reseña').setDescription(cfg.description||'').setColor(safeColor(cfg.color)).setThumbnail((await interaction.guild.members.fetch(targetId)).displayAvatarURL()).addFields({name:'Usuario',value:'<@'+targetId+'>',inline:true},{name:'Tipo',value:type,inline:true},{name:'Rating',value:'⭐'.repeat(Number(rating)),inline:true},{name:'Reseña',value:text}).setTimestamp(); if(cfg.image)embed.setImage(cfg.image); if(cfg.footer)embed.setFooter({text:cfg.footer}); await ch.send({embeds:[embed]}).catch(()=>{}); cooldowns.set(interaction.guildId+':'+interaction.user.id,Date.now()); return interaction.reply(ephemeral('¡Tu vouch fue registrado!')); }
+    if(!interaction.isChatInputCommand()) return;
+    if(interaction.commandName==='variables') return interaction.reply(ephemeral('Variables: {user} {username} {displayname} {userid} {server} {membercount} {channel} {channelname} {ticket} {category} {staff}'));
+    if(interaction.commandName==='welcome') { const sub=interaction.options.getSubcommand(); if(sub==='set'){const channel=interaction.options.getChannel('canal'),message=interaction.options.getString('mensaje'); await ensureGuild(interaction.guild); await prisma.welcomeConfig.upsert({where:{guildId:interaction.guildId},update:{enabled:true,channelId:channel.id,message},create:{guildId:interaction.guildId,enabled:true,channelId:channel.id,message}}); return interaction.reply(ephemeral('Bienvenida configurada.'));}}
+    if(interaction.commandName==='vouch-config'){const sub=interaction.options.getSubcommand(); if(sub==='reset'){await prisma.vouchConfig.upsert({where:{guildId:interaction.guildId},update:{enabled:false},create:{guildId:interaction.guildId,enabled:false,allowedRoleIds:[]}}); return interaction.reply(ephemeral('Vouches desactivados.'));} const ch=interaction.options.getChannel('canal'),role=interaction.options.getRole('rol'),cool=interaction.options.getInteger('cooldown')??60; await prisma.vouchConfig.upsert({where:{guildId:interaction.guildId},update:{enabled:true,channelId:ch.id,allowedRoleIds:role?[role.id]:[],cooldown:cool},create:{guildId:interaction.guildId,enabled:true,channelId:ch.id,allowedRoleIds:role?[role.id]:[],cooldown:cool}}); return interaction.reply(ephemeral('Vouches configurados.')); }
+    if(interaction.commandName==='vouch'){const key=interaction.guildId+':'+interaction.user.id,last=cooldowns.get(key)||0,cfg=await prisma.vouchConfig.findUnique({where:{guildId:interaction.guildId}}); if(!cfg?.enabled)return interaction.reply(ephemeral('Los vouches están desactivados.')); if(Date.now()-last<cfg.cooldown*1000)return interaction.reply(ephemeral('Espera antes de enviar otro vouch.')); if(cfg.allowedRoleIds.length&&!cfg.allowedRoleIds.some(id=>interaction.member.roles.cache.has(id)))return interaction.reply(ephemeral('No tienes permiso para usar /vouch.')); const target=interaction.options.getUser('member'),type=interaction.options.getString('tipo'),rating=interaction.options.getInteger('rating'); if(target.id===interaction.user.id)return interaction.reply(ephemeral('No puedes hacerte un vouch a ti mismo.')); const modal=new ModalBuilder().setCustomId('vouch:'+target.id+':'+type+':'+rating).setTitle('Danos tu reseña'); modal.addComponents(new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('text').setLabel('Danos tu reseña').setStyle(TextInputStyle.Paragraph).setRequired(true).setMaxLength(1000).setPlaceholder('Escribe una reseña...'))); return interaction.showModal(modal); }
+    if(interaction.commandName==='autoresponder'){const sub=interaction.options.getSubcommand(); if(sub==='add'){const trigger=interaction.options.getString('trigger'),response=interaction.options.getString('respuesta'),mode=interaction.options.getString('modo')||'contains'; await prisma.autoResponder.create({data:{guildId:interaction.guildId,trigger,response,matchType:mode}}); return interaction.reply(ephemeral('Autoresponder creado.'));} if(sub==='remove'){await prisma.autoResponder.delete({where:{id:interaction.options.getString('id')}}).catch(()=>{}); return interaction.reply(ephemeral('Autoresponder eliminado si existía.'));} const rows=await prisma.autoResponder.findMany({where:{guildId:interaction.guildId}}); return interaction.reply(ephemeral(rows.length?rows.map(r=>r.id+' • '+r.trigger+' • '+r.matchType).join('\n'):'No hay autoresponders.')); }
+    if(interaction.commandName==='presence'){const sub=interaction.options.getSubcommand(); if(sub==='reset'){await prisma.presenceConfig.updateMany({data:{enabled:false}}); await applyPresence(); return interaction.reply(ephemeral('Rich Presence restablecida.'));} const type=interaction.options.getString('tipo'),text=interaction.options.getString('texto'); await prisma.presenceConfig.updateMany({data:{enabled:false}}); await prisma.presenceConfig.upsert({where:{guildId:interaction.guildId},update:{enabled:true,type,text},create:{guildId:interaction.guildId,enabled:true,type,text}}); await applyPresence(); return interaction.reply(ephemeral('Rich Presence actualizada.')); }
+    if(interaction.commandName==='tickets'){const sub=interaction.options.getSubcommand(); if(sub==='panel'){const p=await prisma.ticketPanel.create({data:{guildId:interaction.guildId,name:interaction.options.getString('nombre'),channelId:interaction.options.getChannel('canal').id}}); return interaction.reply(ephemeral('Panel creado. ID: '+p.id));} if(sub==='categoria'){const p=await prisma.ticketPanel.findFirst({where:{id:interaction.options.getString('panel'),guildId:interaction.guildId}}); if(!p)return interaction.reply(ephemeral('Panel no encontrado.')); const c=await prisma.ticketCategory.create({data:{panelId:p.id,name:interaction.options.getString('nombre'),emoji:interaction.options.getString('emoji'),supportRoleIds:[interaction.options.getRole('staff').id]}}); return interaction.reply(ephemeral('Categoría creada. ID: '+c.id));} const p=await prisma.ticketPanel.findFirst({where:{id:interaction.options.getString('panel'),guildId:interaction.guildId},include:{categories:true}}); if(!p)return interaction.reply(ephemeral('Panel no encontrado.')); const ch=interaction.guild.channels.cache.get(p.channelId); if(!ch?.isTextBased())return interaction.reply(ephemeral('Canal del panel no encontrado.')); const menu=new StringSelectMenuBuilder().setCustomId('ticket:select:'+p.id).setPlaceholder('Selecciona una categoría').addOptions(p.categories.slice(0,25).map(c=>({label:c.name.slice(0,100),value:c.id,description:(c.description||'Abrir ticket').slice(0,100),emoji:c.emoji||undefined}))); const embed=new EmbedBuilder().setTitle(p.title||p.name).setDescription(p.description||'Selecciona una categoría para abrir un ticket.').setColor(safeColor(p.color)); if(p.image)embed.setImage(p.image); if(p.thumbnail)embed.setThumbnail(p.thumbnail); if(p.footer)embed.setFooter({text:p.footer}); await ch.send({embeds:[embed],components:[new ActionRowBuilder().addComponents(menu)]}); return interaction.reply(ephemeral('Panel publicado.')); }
+  } catch(error) { logger.error('Interaction error',{error:error.message}); if(interaction.replied||interaction.deferred) await interaction.followUp(ephemeral('Ocurrió un error.')); else await interaction.reply(ephemeral('Ocurrió un error.')); }
 });
-
-client.on(Events.GuildMemberAdd, async (member) => {
-  const settings = await fetchGuildModuleSettings(member.guild.id);
-  const welcomeConfig = settings?.welcomeConfig;
-
-  if (welcomeConfig?.enabled && welcomeConfig.channelId) {
-    const channel = member.guild.channels.cache.get(String(welcomeConfig.channelId)) || (await member.guild.channels.fetch(String(welcomeConfig.channelId)).catch(() => null));
-    if (channel && channel.isTextBased()) {
-      const embed = new EmbedBuilder()
-        .setTitle(welcomeConfig.title || 'Welcome')
-        .setDescription(renderVariables(welcomeConfig.description || 'Welcome {user}! We are glad to have you here.', {
-          user: member.user.username,
-          username: member.user.username,
-          guild: member.guild.name,
-          guild_name: member.guild.name,
-          user_id: member.user.id,
-          guild_id: member.guild.id,
-        }))
-        .setColor(Number.parseInt(welcomeConfig.color || '0x3b82f6', 16))
-        .setThumbnail(member.user.displayAvatarURL({ extension: 'png', size: 128 }))
-        .setTimestamp();
-
-      await channel.send({ embeds: [embed] });
-    }
-  }
-
-  const antiRaidConfig = settings?.antiRaidConfig;
-  if (antiRaidConfig?.enabled) {
-    const key = `${member.guild.id}`;
-    const now = Date.now();
-    const entries = raidTracker.get(key) || [];
-    const recent = entries.filter((timestamp) => now - timestamp < (Number(antiRaidConfig.interval || 60) * 1000));
-    recent.push(now);
-    raidTracker.set(key, recent);
-
-    if (recent.length >= Number(antiRaidConfig.threshold || 8)) {
-      const auditMessage = `AntiRaid triggered in ${member.guild.name}: ${recent.length} joins within ${antiRaidConfig.interval || 60}s.`;
-      await sendAuditMessage(member.guild.id, auditMessage);
-    }
-  }
-});
-
-async function handleAutoResponder(message) {
-  if (!message.guildId || message.author.bot) {
-    return;
-  }
-
-  const responders = await listAutoRespondersForGuild(message.guildId);
-  const responder = findMatchingAutoResponder(message.content, responders);
-
-  if (!responder) {
-    return;
-  }
-
-  const rendered = renderVariables(String(responder.response), {
-    user: message.author.username,
-    username: message.author.username,
-    guild: message.guild?.name || 'server',
-    guild_name: message.guild?.name || 'server',
-    user_id: message.author.id,
-    guild_id: message.guildId,
-    channel: message.channel?.name || 'channel',
-  });
-
-  await message.reply(rendered);
-}
-
-client.on(Events.MessageCreate, async (message) => {
-  if (message.author.bot) {
-    return;
-  }
-
-  const content = message.content.trim();
-  if (!content) {
-    return;
-  }
-
-  const lower = content.toLowerCase();
-  if (lower.includes('help')) {
-    await message.reply('Codek Hub is online. Available modules include tickets, welcome, vouch, logs, moderation, and profile presence services.');
-  }
-
-  if (lower.includes('status')) {
-    await message.reply('Codek Hub is operational.');
-  }
-
-  if (message.guildId) {
-    const settings = await fetchGuildModuleSettings(message.guildId);
-
-    const automodConfig = settings?.automodConfig;
-    if (automodConfig?.enabled && Array.isArray(automodConfig.bannedWords) && automodConfig.bannedWords.length > 0) {
-      const bannedWords = automodConfig.bannedWords.map((word) => String(word).trim().toLowerCase());
-      const foundWord = bannedWords.find((word) => message.content.toLowerCase().includes(word));
-      if (foundWord) {
-        await message.delete().catch(() => null);
-        await sendAuditMessage(message.guildId, `AutoMod blocked a message from ${message.author.tag} containing: ${foundWord}`);
-        return;
-      }
-    }
-
-    const antispamConfig = settings?.antispamConfig;
-    if (antispamConfig?.enabled) {
-      const key = `${message.guildId}:${message.author.id}`;
-      const now = Date.now();
-      const windows = spamTracker.get(key) || [];
-      const recent = windows.filter((timestamp) => now - timestamp < (Number(antispamConfig.timeframe || 10) * 1000));
-      recent.push(now);
-      spamTracker.set(key, recent);
-
-      if (recent.length > Number(antispamConfig.maxMessages || 5)) {
-        await message.delete().catch(() => null);
-        await sendAuditMessage(message.guildId, `AntiSpam triggered for ${message.author.tag} in ${message.guild?.name || 'this server'}`);
-        return;
-      }
-    }
-
-  }
-
-  await handleAutoResponder(message);
-});
-
-client.on(Events.InteractionCreate, async (interaction) => {
-  if (interaction.isModalSubmit() && interaction.customId.startsWith('vouch-review:')) {
-    const [, targetId, ratingText] = interaction.customId.split(':');
-    const review = interaction.fields.getTextInputValue('vouch_review_input');
-    await submitVouch(interaction, {
-      targetId,
-      rating: Number(ratingText) || 5,
-      review,
-    });
-    return;
-  }
-
-  if (!interaction.isChatInputCommand()) {
-    return;
-  }
-
-  if (interaction.commandName !== 'vouch') {
-    return;
-  }
-
-  const target = interaction.options.getMember('member');
-  const rating = interaction.options.getInteger('rating') ?? 5;
-  const review = interaction.options.getString('review');
-
-  if (!target) {
-    await interaction.reply({ content: 'Please select a valid member to review.', ephemeral: true });
-    return;
-  }
-
-  if (target.id === interaction.user.id) {
-    await interaction.reply({ content: 'You cannot vouch for yourself.', ephemeral: true });
-    return;
-  }
-
-  if (review) {
-    await submitVouch(interaction, { targetId: target.id, rating, review });
-    return;
-  }
-
-  const modal = new ModalBuilder()
-    .setCustomId(`vouch-review:${target.id}:${rating}`)
-    .setTitle('Danos tu reseña');
-
-  const reviewInput = new TextInputBuilder()
-    .setCustomId('vouch_review_input')
-    .setLabel('Danos tu reseña')
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(true)
-    .setPlaceholder('Escribe una reseña útil y respetuosa...');
-
-  const actionRow = new ActionRowBuilder().addComponents(reviewInput);
-  modal.addComponents(actionRow);
-  await interaction.showModal(modal);
-});
-
-client.on(Events.PresenceUpdate, async (_oldPresence, newPresence) => {
-  const payload = {
-    userId: newPresence?.userId || null,
-    guildId: newPresence?.guild?.id || null,
-    status: newPresence?.status || null,
-    activities: (newPresence?.activities || []).map((activity) => ({
-      name: activity.name,
-      type: activity.type,
-      details: activity.details || null,
-      state: activity.state || null,
-    })),
-    updatedAt: new Date().toISOString(),
-  };
-
-  if (!payload.userId) {
-    return;
-  }
-
-  try {
-    await fetch(`http://${env.apiHost}:${env.apiPort}/api/stream/presence`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (error) {
-    logger.warn('Unable to push presence update to API', { error: error.message });
-  }
-});
-
-process.on('SIGINT', async () => {
-  logger.info('Shutting down Discord bot');
-  await client.destroy();
-  process.exit(0);
-});
-
-client.login(env.discordToken).catch((error) => {
-  logger.error('Failed to connect to Discord', { error: error.message });
-  process.exit(1);
-});
+client.login(env.DISCORD_TOKEN);
