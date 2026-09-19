@@ -1,5 +1,5 @@
 {
   "name":"codek-hub","version":"1.0.0","private":true,"type":"module",
-  "scripts":{"bot":"node apps/bot/src/index.js","api":"node apps/api/src/index.js","dev":"concurrently -k \"npm run bot\" \"npm run api\"","db:generate":"prisma generate","db:migrate":"prisma migrate deploy","db:push":"prisma db push","test":"node --test"},
+  "scripts":{"bot":"node apps/bot/src/index.js","api":"node apps/api/src/index.js","dev":"concurrently -k \"npm run bot\" \"npm run api\"","db:generate":"prisma generate","db:migrate":"prisma db push","db:push":"prisma db push","test":"node --test"},
   "dependencies":{"@prisma/client":"^5.19.1","concurrently":"^9.0.1","cors":"^2.8.5","discord.js":"^14.16.0","dotenv":"^16.4.1","express":"^4.21.2","express-rate-limit":"^7.1.0","helmet":"^8.1.0","prisma":"^5.19.1","zod":"^3.24.0"}
 }
