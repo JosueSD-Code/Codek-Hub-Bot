@@ -299,7 +299,7 @@ async function createTicket(i,cat,answers=[]){
       t=await prisma.ticket.create({
         data:{
           guildId:i.guildId,
-          category:{connect:{id:cat.id}},
+          categoryId:cat.id,
           userId:i.user.id,
           channelId:ch.id,
           number:n,
