@@ -650,6 +650,9 @@ client.on(Events.InteractionCreate,async i=>{
     if(i.isModalSubmit()&&i.customId.startsWith('vouch:')){
       const [,targetId,type,ratingRaw]=i.customId.split(':');
       const rating=Number(ratingRaw);
+      if(!targetId||!['Legit','No Legit'].includes(type)||!Number.isInteger(rating)||rating<1||rating>5){
+        return i.reply(deny('Los datos del vouch no son válidos. Vuelve a ejecutar /vouch.'));
+      }
       const text=i.fields.getTextInputValue('review').trim();
       if(!text)return i.reply(deny('La reseña no puede estar vacía.'));
 
