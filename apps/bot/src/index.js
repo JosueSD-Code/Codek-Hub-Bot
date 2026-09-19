@@ -127,7 +127,26 @@ const roleIds=(g,v)=>String(v||'').split(',')
   .filter(id=>g?.roles.cache.has(id));
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-')
-  .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
+  .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';\nconst normalizeEmoji=(guild,value)=>{
+  const raw=String(value||'').trim();
+  if(!raw)return null;
+
+  const custom=raw.match(/^<a?:([\\w~]+):(\\d+)>$/);
+  if(custom){
+    const emoji=guild?.emojis?.cache?.get(custom[2]);
+    if(!emoji)return null;
+    return {id:emoji.id,name:emoji.name||custom[1],animated:emoji.animated};
+  }
+
+  const byName=guild?.emojis?.cache?.find(e=>e.name?.toLowerCase()===raw.toLowerCase());
+  if(byName){
+    return {id:byName.id,name:byName.name||raw,animated:byName.animated};
+  }
+
+  return raw;
+};
+
+const emojiExists=(guild,value)=>Boolean(normalizeEmoji(guild,value));
 const context=(u,g,ch,extra={})=>{
   const avatar=u?.displayAvatarURL?.({size:1024,extension:'png'})||u?.displayAvatarURL?.()||'';
   const guildIcon=g?.iconURL?.({size:1024,extension:'png'})||'';
