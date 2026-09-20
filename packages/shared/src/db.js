@@ -26,25 +26,33 @@ export async function getGuild(id){
 }
 
 export async function findAutoResponder(content,guildId){
-  const t=String(content??'').trim().toLowerCase();
-  if(!t)return null;
+  const text=String(content??'').trim().toLowerCase();
+  if(!text||!guildId)return null;
+
   const rows=await prisma.autoResponder.findMany({
     where:{guildId,enabled:true},
-    orderBy:{createdAt:'asc'}
+    orderBy:{createdAt:'asc'},
+    take:100
   });
-  return rows.find(r=>{
-    const x=r.trigger.trim().toLowerCase();
-    return x&&(r.matchType==='exact'?t===x:t.includes(x));
+
+  return rows.find(row=>{
+    const trigger=row.trigger.trim().toLowerCase();
+    if(!trigger)return false;
+    return row.matchType==='exact'
+      ?text===trigger
+      :text.includes(trigger);
   })??null;
 }
 
 export async function audit(guildId,userId,module,action,details){
   if(!guildId)return null;
+
   await prisma.guild.upsert({
     where:{id:guildId},
     update:{},
     create:{id:guildId}
   }).catch(()=>{});
+
   return prisma.auditLog.create({
     data:{
       guild:{connect:{id:guildId}},
