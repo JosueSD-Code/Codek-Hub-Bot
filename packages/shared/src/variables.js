@@ -1,6 +1,17 @@
+const PUBLIC_VARIABLES={
+  user:'user',mention:'mention',username:'username',tag:'tag',usertag:'usertag',
+  displayname:'displayname',displayname_raw:'displayname_raw',
+  useravatar:'useravatar',avatar:'avatar',user_avatar:'user_avatar',
+  server:'server',guild:'guild',membercount:'membercount',
+  guildicon:'guildicon',servericon:'servericon',
+  channel:'channel',channelname:'channelname',
+  ticket:'ticket',category:'category',staff:'staff',
+  client:'client',clientavatar:'clientavatar',target:'target',targetavatar:'targetavatar'
+};
+
 export function renderVariables(template,context={}){
   if(typeof template!=='string')return '';
-  const v={
+  const values={
     user:context.user??context.username??'user',
     mention:context.mention??context.user??context.username??'user',
     username:context.username??'user',
@@ -26,14 +37,10 @@ export function renderVariables(template,context={}){
     target:context.target??context.targetMention??'user',
     targetavatar:context.targetavatar??context.targetAvatar??''
   };
-  return template.replace(/\{\s*([a-zA-Z0-9_]+)\s*\}/g,(_,k)=>Object.prototype.hasOwnProperty.call(v,k.toLowerCase())?String(v[k.toLowerCase()]):'{'+k+'}');
+  return template.replace(/\{\s*([a-zA-Z0-9_]+)\s*\}/g,(_,key)=>{
+    const normalized=key.toLowerCase();
+    return Object.prototype.hasOwnProperty.call(values,normalized)?String(values[normalized]):'{'+key+'}';
+  });
 }
-export const VARIABLES=[
-  'user','mention','username','tag','usertag','displayname','displayname_raw',
-  'useravatar','avatar','user_avatar',
-  'server','guild','membercount','guildicon','servericon',
-  'channel','channelname',
-  'ticket','category','staff',
-  'client','clientavatar',
-  'target','targetavatar'
-];
+
+export const VARIABLES=Object.freeze(Object.keys(PUBLIC_VARIABLES));
