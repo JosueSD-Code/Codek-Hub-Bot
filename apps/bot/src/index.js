@@ -142,7 +142,7 @@ const normalizeEmoji=(guild,value)=>{
 };
 
 const emojiExists=(guild,value)=>Boolean(normalizeEmoji(guild,value));
-const isSnowflake=value=>/^\\d{17,20}$/.test(String(value??''));
+const isSnowflake=value=>/^\d{17,20}$/.test(String(value??''));
 const validChannel=(guild,id,type=ChannelType.GuildText)=>{
   if(!isSnowflake(id))return null;
   const ch=guild?.channels?.cache?.get(id);
