@@ -239,7 +239,7 @@ async function createTicket(i,cat,answers=[]){
   try{
     const supportRoleIds=cat.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
     if(!supportRoleIds.length){
-      return i.reply(deny('Esta categoría no tiene ningún rol de soporte válido.'));
+      return i.editReply(deny('Esta categoría no tiene ningún rol de soporte válido.'));
     }
 
     const overwrites=[
