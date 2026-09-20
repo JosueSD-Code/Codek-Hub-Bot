@@ -22,7 +22,9 @@ const client=new Client({
 const cooldowns=new Map();
 const locks=new Set();
 const closeLocks=new Set();
-const ADMIN=PermissionFlagsBits.Administrator;
+import { ADMIN,isAdmin,deny,roleIdsByName } from './utils/permissions.js';
+import { clip,safeUrl } from './utils/validation.js';
+import { color } from './utils/embeds.js';
 
 const commands=[
   new SlashCommandBuilder()
@@ -116,20 +118,7 @@ const commands=[
   new SlashCommandBuilder().setName('variables').setDescription('Muestra variables.')
 ];
 
-const deny=content=>({content,flags:64});
-const color=v=>{
-  const h=String(v||'5865F2').replace(/^#/,'').trim();
-  return /^[0-9a-fA-F]{6}$/.test(h)?parseInt(h,16):0x5865F2;
-};
-const isAdmin=i=>Boolean(i.memberPermissions?.has(ADMIN));
-const clip=(value,max)=>String(value??'').slice(0,max);
-const safeUrl=value=>{try{const u=new URL(String(value??''));return /^https?:$/.test(u.protocol)?u.toString():null;}catch{return null;}};
-const roleIds=(g,v)=>String(v||'').split(',')
-  .map(x=>x.trim())
-  .filter(Boolean)
-  .map(name=>g?.roles.cache.find(r=>r.name.toLowerCase()===name.toLowerCase()))
-  .filter(Boolean)
-  .map(r=>r.id);
+const roleIds=(g,v)=>roleIdsByName(g,v);
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-')
   .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
