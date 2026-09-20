@@ -1004,21 +1004,35 @@ client.on(Events.InteractionCreate,async i=>{
       if(sub==='panel'){
         const ch=i.options.getChannel('canal');
         if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
+        const name=i.options.getString('nombre').trim();
+        const rawColor=i.options.getString('color');
+        const image=i.options.getString('imagen');
+        const thumbnail=i.options.getString('thumbnail');
+        if(!name)return i.reply(deny('El nombre del panel es obligatorio.'));
+        if(rawColor&&!isHexColor(rawColor))return i.reply(deny('El color debe ser HEX de 6 dígitos, por ejemplo 5865F2.'));
+        if(image&&!safeUrl(image))return i.reply(deny('La URL de imagen no es válida. Usa una URL http/https.'));
+        if(thumbnail&&!safeUrl(thumbnail))return i.reply(deny('La URL del thumbnail no es válida. Usa una URL http/https.'));
 
         const data={
-          name:i.options.getString('nombre').trim(),
+          name,
           channelId:ch.id,
           title:i.options.getString('titulo'),
           description:i.options.getString('descripcion'),
-          color:i.options.getString('color'),
-          image:i.options.getString('imagen'),
-          thumbnail:i.options.getString('thumbnail'),
+          color:rawColor,
+          image,
+          thumbnail,
           footer:i.options.getString('footer')
         };
 
-        const p=await prisma.ticketPanel.create({
-          data:{guild:{connect:{id:i.guildId}},...data}
-        });
+        let p;
+        try{
+          p=await prisma.ticketPanel.create({
+            data:{guild:{connect:{id:i.guildId}},...data}
+          });
+        }catch(e){
+          if(e?.code==='P2002')return i.reply(deny('Ya existe un panel con ese nombre en este servidor.'));
+          throw e;
+        }
         await audit(i.guildId,i.user.id,'tickets','panel_created',p.name);
         return i.reply(deny('Panel creado: **'+p.name+'**.'));
       }
