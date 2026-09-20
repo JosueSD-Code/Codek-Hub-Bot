@@ -5,15 +5,16 @@ export const prisma=globalThis[key]??new PrismaClient();
 if(process.env.NODE_ENV!=='production')globalThis[key]=prisma;
 
 export async function ensureGuild(g){
-  if(!g)return null;
+  if(!g?.id)return null;
   return prisma.guild.upsert({
     where:{id:g.id},
-    update:{name:g.name,icon:g.icon,ownerId:g.ownerId},
-    create:{id:g.id,name:g.name,icon:g.icon,ownerId:g.ownerId}
+    update:{name:g.name??null,icon:g.icon??null,ownerId:g.ownerId??null},
+    create:{id:g.id,name:g.name??null,icon:g.icon??null,ownerId:g.ownerId??null}
   });
 }
 
 export async function getGuild(id){
+  if(!id)return null;
   return prisma.guild.findUnique({
     where:{id},
     include:{
@@ -32,15 +33,13 @@ export async function findAutoResponder(content,guildId){
   const rows=await prisma.autoResponder.findMany({
     where:{guildId,enabled:true},
     orderBy:{createdAt:'asc'},
-    take:100
+    take:500
   });
 
   return rows.find(row=>{
     const trigger=row.trigger.trim().toLowerCase();
     if(!trigger)return false;
-    return row.matchType==='exact'
-      ?text===trigger
-      :text.includes(trigger);
+    return row.matchType==='exact' ? text===trigger : text.includes(trigger);
   })??null;
 }
 
@@ -51,14 +50,14 @@ export async function audit(guildId,userId,module,action,details){
     where:{id:guildId},
     update:{},
     create:{id:guildId}
-  }).catch(()=>{});
+  });
 
   return prisma.auditLog.create({
     data:{
       guild:{connect:{id:guildId}},
       userId:userId??'unknown',
-      module,
-      action,
+      module:module??'system',
+      action:action??'unknown',
       details:details??null
     }
   });
