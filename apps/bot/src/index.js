@@ -989,14 +989,19 @@ client.on(Events.InteractionCreate,async i=>{
         const n=await prisma.ticketQuestion.count({where:{categoryId:c.id}});
         if(n>=5)return i.reply(deny('Máximo 5 preguntas por categoría.'));
 
-        await prisma.ticketQuestion.create({
-          data:{
-            category:{connect:{id:c.id}},
-            label:i.options.getString('label').trim(),
-            placeholder:i.options.getString('placeholder'),
-            required:i.options.getBoolean('obligatoria')??true
-          }
-        });
+        try{
+          await prisma.ticketQuestion.create({
+            data:{
+              category:{connect:{id:c.id}},
+              label:i.options.getString('label').trim(),
+              placeholder:i.options.getString('placeholder'),
+              required:i.options.getBoolean('obligatoria')??true
+            }
+          });
+        }catch(e){
+          if(e?.code==='P2002')return i.reply(deny('Ya existe una pregunta con ese texto en esta categoría.'));
+          throw e;
+        }
         await audit(i.guildId,i.user.id,'tickets','question_added',c.name);
         return i.reply(deny('Pregunta añadida.'));
       }
@@ -1060,16 +1065,22 @@ client.on(Events.InteractionCreate,async i=>{
           return i.reply(deny('El emoji indicado no existe en este servidor. Usa un emoji Unicode o un emoji personalizado de este servidor.'));
         }
 
-        const c=await prisma.ticketCategory.create({
-          data:{
-            panel:{connect:{id:p.id}},
-            name:i.options.getString('nombre').trim(),
-            description:i.options.getString('descripcion'),
-            emoji:i.options.getString('emoji'),
-            supportRoleIds:ids,
-            discordCategoryId:discordCategory?.id||null
-          }
-        });
+        let c;
+        try{
+          c=await prisma.ticketCategory.create({
+            data:{
+              panel:{connect:{id:p.id}},
+              name:i.options.getString('nombre').trim(),
+              description:i.options.getString('descripcion'),
+              emoji:i.options.getString('emoji'),
+              supportRoleIds:ids,
+              discordCategoryId:discordCategory?.id||null
+            }
+          });
+        }catch(e){
+          if(e?.code==='P2002')return i.reply(deny('Ya existe una categoría con ese nombre en este panel.'));
+          throw e;
+        }
         await audit(i.guildId,i.user.id,'tickets','category_created',c.name);
         return i.reply(deny('Categoría creada: **'+c.name+'** en el panel **'+p.name+'**.'));
       }
