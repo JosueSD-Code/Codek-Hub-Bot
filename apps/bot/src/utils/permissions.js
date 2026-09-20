@@ -3,11 +3,8 @@ import { PermissionFlagsBits } from 'discord.js';
 export const ADMIN=PermissionFlagsBits.Administrator;
 
 export function isAdmin(value){
-  return Boolean(
-    value?.memberPermissions?.has?.(ADMIN) ||
-    value?.permissions?.has?.(ADMIN) ||
-    value?.member?.permissions?.has?.(ADMIN)
-  );
+  const permissions=value?.memberPermissions??value?.permissions??value?.member?.permissions;
+  return Boolean(permissions?.has?.(ADMIN));
 }
 
 export function deny(content){
@@ -15,11 +12,16 @@ export function deny(content){
 }
 
 export function roleIdsByName(guild,names){
-  return String(names??'')
+  if(!guild?.roles?.cache)return [];
+
+  const requested=[...new Set(String(names??'')
     .split(',')
     .map(value=>value.trim())
     .filter(Boolean)
-    .map(name=>guild?.roles?.cache?.find(role=>role.name.toLowerCase()===name.toLowerCase()))
+    .map(name=>name.toLowerCase()))];
+
+  return requested
+    .map(name=>guild.roles.cache.find(role=>role.name.toLowerCase()===name))
     .filter(Boolean)
     .map(role=>role.id);
 }
