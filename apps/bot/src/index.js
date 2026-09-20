@@ -38,19 +38,19 @@ const commands=[
       .addStringOption(o=>o.setName('thumbnail').setDescription('URL thumbnail'))
       .addStringOption(o=>o.setName('footer').setDescription('Footer')))
     .addSubcommand(s=>s.setName('categoria').setDescription('Añade categoría.')
-      .addStringOption(o=>o.setName('panel').setDescription('ID panel').setRequired(true))
+      .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true))
       .addStringOption(o=>o.setName('nombre').setDescription('Nombre').setRequired(true))
       .addStringOption(o=>o.setName('staff').setDescription('Roles separados por comas').setRequired(true))
       .addStringOption(o=>o.setName('emoji').setDescription('Emoji'))
       .addStringOption(o=>o.setName('descripcion').setDescription('Descripción'))
       .addChannelOption(o=>o.setName('categoria-canal').setDescription('Categoría Discord').addChannelTypes(ChannelType.GuildCategory)))
     .addSubcommand(s=>s.setName('pregunta').setDescription('Añade pregunta.')
-      .addStringOption(o=>o.setName('categoria').setDescription('ID categoría').setRequired(true))
+      .addStringOption(o=>o.setName('categoria').setDescription('Nombre de la categoría').setRequired(true))
       .addStringOption(o=>o.setName('label').setDescription('Pregunta').setRequired(true))
       .addStringOption(o=>o.setName('placeholder').setDescription('Placeholder'))
       .addBooleanOption(o=>o.setName('obligatoria').setDescription('Obligatoria')))
     .addSubcommand(s=>s.setName('publicar').setDescription('Publica panel.')
-      .addStringOption(o=>o.setName('panel').setDescription('ID panel').setRequired(true)))
+      .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true)))
     .addSubcommand(s=>s.setName('log').setDescription('Configura logs.')
       .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true))),
 
@@ -161,19 +161,16 @@ const context=(u,g,ch,extra={})=>{
     usertag:u?.tag||u?.username||'user',
     displayname:u?.globalName||u?.displayName||u?.username||'user',
     displayname_raw:u?.globalName||u?.displayName||u?.username||'user',
-    userid:u?.id||'0',
     useravatar:avatar,
     avatar,
     user_avatar:avatar,
     server:g?.name||'server',
     guild:g?.name||'server',
     membercount:g?.memberCount??0,
-    guildid:g?.id||'0',
     guildicon:guildIcon,
     servericon:guildIcon,
     channel:ch?.toString?.()||'channel',
     channelname:ch?.name||'channel',
-    channelid:ch?.id||'0',
     ...extra
   };
 };
@@ -297,8 +294,7 @@ async function createTicket(i,cat,answers=[]){
         let locked=false;
 
         while(!locked){
-          const rows=await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${k})) AS locked`;
-          locked=Boolean(rows[0]?.locked);
+          const rows=await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${k})) AS locked`;          locked=Boolean(rows[0]?.locked);
           if(!locked)await new Promise(resolve=>setTimeout(resolve,25));
         }
 
@@ -350,7 +346,6 @@ async function createTicket(i,cat,answers=[]){
       ticket:String(n),
       category:cat.name,
       staff:supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
-      ticketid:t.id
     });
     const a=answers.length?'\\n\\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\\n'):'';
 
@@ -400,7 +395,7 @@ async function transcript(ch,t){
 
   return '<!doctype html><html><head><meta charset="utf-8"><title>Ticket #'+esc(t.number)+'</title></head><body>'+
     '<h1>Ticket #'+esc(t.number)+'</h1>'+
-    '<p>Usuario: '+esc(t.userId)+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+
+    '<p>Usuario: '+esc(t.user?.tag||t.user?.username||'Usuario')+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+
     answers+
     xs.map(m=>{
       const attachments=[...m.attachments.values()].map(a=>a.url);
@@ -499,6 +494,52 @@ client.on(Events.GuildMemberAdd,async m=>{
 client.on(Events.MessageCreate,async m=>{
   if(m.author.bot||!m.guildId)return;
   try{
+    const botMentioned=client.user&&m.mentions.users.has(client.user.id);
+    if(botMentioned){
+      if(!m.member?.permissions?.has(ADMIN))return;
+
+      const [panelCount,categoryCount,openTickets,vouchConfig,autoCount,presenceConfig]=await Promise.all([
+        prisma.ticketPanel.count({where:{guildId:m.guildId}}),
+        prisma.ticketCategory.count({where:{panel:{guildId:m.guildId}}}),
+        prisma.ticket.count({where:{guildId:m.guildId,status:'open'}}),
+        prisma.vouchConfig.findUnique({where:{guildId:m.guildId}}),
+        prisma.autoResponder.count({where:{guildId:m.guildId,enabled:true}}),
+        prisma.presenceConfig.findFirst({where:{guildId:m.guildId,enabled:true},orderBy:{updatedAt:'desc'}})
+      ]);
+
+      const dbOk=await prisma.guild.count({where:{id:m.guildId}}).then(()=>true).catch(()=>false);
+      const memory=process.memoryUsage();
+      const uptime=Math.floor(process.uptime());
+      const formatUptime=seconds=>{
+        const d=Math.floor(seconds/86400);
+        const h=Math.floor((seconds%86400)/3600);
+        const min=Math.floor((seconds%3600)/60);
+        const s=seconds%60;
+        return [d?d+'d':null,h?h+'h':null,min?min+'m':null,s+'s'].filter(Boolean).join(' ');
+      };
+
+      const statusEmbed=new EmbedBuilder()
+        .setTitle('Codek Hub • Estado del bot')
+        .setDescription('Información interna de mantenimiento para administradores.')
+        .setColor(dbOk?0x57F287:0xED4245)
+        .addFields(
+          {name:'Bot',value:'🟢 Online',inline:true},
+          {name:'Ping',value:Math.round(client.ws.ping)+' ms',inline:true},
+          {name:'Base de datos',value:dbOk?'🟢 Operativa':'🔴 Error',inline:true},
+          {name:'Servidor',value:m.guild.name,inline:true},
+          {name:'Tickets',value:'Paneles: '+panelCount+'\nCategorías: '+categoryCount+'\nAbiertos: '+openTickets,inline:true},
+          {name:'Vouch',value:vouchConfig?.enabled?'🟢 Activo':'⚪ Desactivado',inline:true},
+          {name:'Autoresponder',value:autoCount+' activos',inline:true},
+          {name:'Rich Presence',value:presenceConfig?.enabled?'🟢 '+presenceConfig.type+': '+clip(presenceConfig.text,80):'⚪ Sin configurar',inline:true},
+          {name:'Runtime',value:'Node '+process.version+'\nUptime: '+formatUptime(uptime),inline:true},
+          {name:'Memoria',value:Math.round(memory.rss/1024/1024)+' MB RSS',inline:true}
+        )
+        .setFooter({text:'Solo visible para administradores'})
+        .setTimestamp();
+
+      return m.reply({embeds:[statusEmbed]});
+    }
+
     const r=await findAutoResponder(m.content,m.guildId);
     if(!r||!r.response?.trim())return;
 
@@ -597,8 +638,7 @@ client.on(Events.InteractionCreate,async i=>{
     if(i.isButton()&&i.customId.startsWith('ticket:close:')){
       const id=i.customId.split(':')[2];
       const t=await prisma.ticket.findFirst({
-        where:{id,guildId:i.guildId},
-        include:{category:true}
+        where:{id,guildId:i.guildId},        include:{category:true}
       });
       if(!t||t.status!=='open')return i.reply(deny('Ticket no encontrado o cerrado.'));
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
@@ -696,10 +736,8 @@ client.on(Events.InteractionCreate,async i=>{
 
       const x=context(target,i.guild,ch,{
         target:target.toString(),
-        targetid:target.id,
         targetavatar:target.displayAvatarURL({size:1024,extension:'png'}),
         client:i.user.toString(),
-        clientid:i.user.id,
         clientavatar:i.user.displayAvatarURL({size:1024,extension:'png'}),
         category:'vouch'
       });
@@ -729,7 +767,7 @@ client.on(Events.InteractionCreate,async i=>{
 
       await ch.send({embeds:[emb]});
       cooldowns.set(i.guildId+':'+i.user.id,Date.now());
-      await audit(i.guildId,i.user.id,'vouch','created',targetId);
+      await audit(i.guildId,i.user.id,'vouch','created',target?.tag||target?.username||'Usuario');
       return i.reply(deny('¡Vouch registrado correctamente!'));
     }
 
@@ -737,12 +775,12 @@ client.on(Events.InteractionCreate,async i=>{
 
     if(i.commandName==='variables'){
       return i.reply(deny([
-        'Usuarios: {user} {mention} {username} {tag} {displayname} {userid}',
+        'Usuarios: {user} {mention} {username} {tag} {displayname}',
         'Avatares: {useravatar} {avatar} {user_avatar}',
-        'Servidor: {server} {guild} {membercount} {guildid} {guildicon} {servericon}',
-        'Canal: {channel} {channelname} {channelid}',
-        'Ticket: {ticket} {ticketid} {category} {staff}',
-        'Vouch: {client} {clientid} {clientavatar} {target} {targetid} {targetavatar}'
+        'Servidor: {server} {guild} {membercount} {guildicon} {servericon}',
+        'Canal: {channel} {channelname}',
+        'Ticket: {ticket} {category} {staff}',
+        'Vouch: {client} {clientavatar} {target} {targetavatar}'
       ].join('\n')));
     }
 
@@ -898,7 +936,6 @@ client.on(Events.InteractionCreate,async i=>{
         await audit(i.guildId,i.user.id,'autoresponder','removed',trigger);
         return i.reply(deny('Autoresponder eliminado.'));
       }
-
       const rows=await prisma.autoResponder.findMany({
         where:{guildId:i.guildId},
         orderBy:{createdAt:'asc'}
@@ -945,9 +982,13 @@ client.on(Events.InteractionCreate,async i=>{
       }
 
       if(sub==='pregunta'){
-        const c=await prisma.ticketCategory.findFirst({
-          where:{id:i.options.getString('categoria'),panel:{guildId:i.guildId}}
+        const categoryName=i.options.getString('categoria').trim();
+        const matches=await prisma.ticketCategory.findMany({
+          where:{name:{equals:categoryName,mode:'insensitive'},panel:{guildId:i.guildId}},
+          select:{id:true,name:true,panelId:true}
         });
+        if(matches.length>1)return i.reply(deny('Hay más de una categoría con ese nombre. Usa un nombre de categoría único.'));
+        const c=matches[0];
         if(!c)return i.reply(deny('Categoría no encontrada.'));
         const n=await prisma.ticketQuestion.count({where:{categoryId:c.id}});
         if(n>=5)return i.reply(deny('Máximo 5 preguntas por categoría.'));
@@ -960,7 +1001,7 @@ client.on(Events.InteractionCreate,async i=>{
             required:i.options.getBoolean('obligatoria')??true
           }
         });
-        await audit(i.guildId,i.user.id,'tickets','question_added',c.id);
+        await audit(i.guildId,i.user.id,'tickets','question_added',c.name);
         return i.reply(deny('Pregunta añadida.'));
       }
 
@@ -982,14 +1023,18 @@ client.on(Events.InteractionCreate,async i=>{
         const p=await prisma.ticketPanel.create({
           data:{guild:{connect:{id:i.guildId}},...data}
         });
-        await audit(i.guildId,i.user.id,'tickets','panel_created',p.id);
-        return i.reply(deny('Panel creado. ID: '+p.id));
+        await audit(i.guildId,i.user.id,'tickets','panel_created',p.name);
+        return i.reply(deny('Panel creado: **'+p.name+'**.'));
       }
 
       if(sub==='categoria'){
-        const p=await prisma.ticketPanel.findFirst({
-          where:{id:i.options.getString('panel'),guildId:i.guildId}
+        const panelName=i.options.getString('panel').trim();
+        const panels=await prisma.ticketPanel.findMany({
+          where:{name:{equals:panelName,mode:'insensitive'},guildId:i.guildId},
+          select:{id:true,name:true}
         });
+        if(panels.length>1)return i.reply(deny('Hay más de un panel con ese nombre. Usa un nombre de panel único.'));
+        const p=panels[0];
         if(!p)return i.reply(deny('Panel no encontrado.'));
 
         const ids=roleIds(i.guild,i.options.getString('staff'));
@@ -1015,8 +1060,8 @@ client.on(Events.InteractionCreate,async i=>{
             discordCategoryId:discordCategory?.id||null
           }
         });
-        await audit(i.guildId,i.user.id,'tickets','category_created',c.id);
-        return i.reply(deny('Categoría creada. ID: '+c.id));
+        await audit(i.guildId,i.user.id,'tickets','category_created',c.name);
+        return i.reply(deny('Categoría creada: **'+c.name+'** en el panel **'+p.name+'**.'));
       }
 
       const p=await prisma.ticketPanel.findFirst({
@@ -1057,7 +1102,7 @@ client.on(Events.InteractionCreate,async i=>{
         embeds:[emb],
         components:[new ActionRowBuilder().addComponents(menu)]
       });
-      await audit(i.guildId,i.user.id,'tickets','panel_published',p.id);
+      await audit(i.guildId,i.user.id,'tickets','panel_published',p.name);
       return i.reply(deny('Panel publicado.'));
     }
   }catch(e){
