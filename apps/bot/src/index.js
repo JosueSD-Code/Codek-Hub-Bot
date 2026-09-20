@@ -40,7 +40,7 @@ const commands=[
     .addSubcommand(s=>s.setName('categoria').setDescription('Añade categoría.')
       .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true))
       .addStringOption(o=>o.setName('nombre').setDescription('Nombre').setRequired(true))
-      .addStringOption(o=>o.setName('staff').setDescription('Roles separados por comas').setRequired(true))
+      .addStringOption(o=>o.setName('staff').setDescription('Nombres de roles separados por comas').setRequired(true))
       .addStringOption(o=>o.setName('emoji').setDescription('Emoji'))
       .addStringOption(o=>o.setName('descripcion').setDescription('Descripción'))
       .addChannelOption(o=>o.setName('categoria-canal').setDescription('Categoría Discord').addChannelTypes(ChannelType.GuildCategory)))
@@ -72,7 +72,7 @@ const commands=[
     .setDefaultMemberPermissions(ADMIN)
     .addSubcommand(s=>s.setName('set').setDescription('Activa.')
       .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true))
-      .addStringOption(o=>o.setName('roles').setDescription('Roles separados por comas'))
+      .addStringOption(o=>o.setName('roles').setDescription('Nombres de roles separados por comas'))
       .addIntegerOption(o=>o.setName('cooldown').setDescription('Segundos').setMinValue(0))
       .addStringOption(o=>o.setName('titulo').setDescription('Título'))
       .addStringOption(o=>o.setName('descripcion').setDescription('Descripción'))
@@ -125,8 +125,11 @@ const isAdmin=i=>Boolean(i.memberPermissions?.has(ADMIN));
 const clip=(value,max)=>String(value??'').slice(0,max);
 const safeUrl=value=>{try{const u=new URL(String(value??''));return /^https?:$/.test(u.protocol)?u.toString():null;}catch{return null;}};
 const roleIds=(g,v)=>String(v||'').split(',')
-  .map(x=>x.trim().replace(/[<@&>]/g,''))
-  .filter(id=>g?.roles.cache.has(id));
+  .map(x=>x.trim())
+  .filter(Boolean)
+  .map(name=>g?.roles.cache.find(r=>r.name.toLowerCase()===name.toLowerCase()))
+  .filter(Boolean)
+  .map(r=>r.id);
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
   .replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-')
   .replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
@@ -362,7 +365,7 @@ async function createTicket(i,cat,answers=[]){
       components:[row]
     });
 
-    await audit(i.guildId,i.user.id,'tickets','created','#'+n);
+    await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n);
     await logToChannel(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.');
     return i.reply(deny('Ticket creado: '+ch));
   }catch(e){
@@ -485,7 +488,7 @@ client.on(Events.GuildMemberAdd,async m=>{
       content:clip(renderVariables(c.message||'¡Bienvenido {user} a {server}!',x),2000),
       embeds:[emb]
     });
-    await audit(m.guild.id,m.id,'welcome','sent',ch.id);
+    await audit(m.guild.id,m.id,'welcome','sent',ch.name);
   }catch(e){
     logger.error('Welcome failed',{error:e.message});
   }
@@ -977,7 +980,7 @@ client.on(Events.InteractionCreate,async i=>{
         const ch=i.options.getChannel('canal');
         if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
         await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:ch.id}});
-        await audit(i.guildId,i.user.id,'tickets','log_channel',ch.id);
+        await audit(i.guildId,i.user.id,'tickets','log_channel',ch.name);
         return i.reply(deny('Canal de logs configurado.'));
       }
 
@@ -1064,10 +1067,13 @@ client.on(Events.InteractionCreate,async i=>{
         return i.reply(deny('Categoría creada: **'+c.name+'** en el panel **'+p.name+'**.'));
       }
 
-      const p=await prisma.ticketPanel.findFirst({
-        where:{id:i.options.getString('panel'),guildId:i.guildId},
+      const panelName=i.options.getString('panel').trim();
+      const panels=await prisma.ticketPanel.findMany({
+        where:{name:{equals:panelName,mode:'insensitive'},guildId:i.guildId},
         include:{categories:true}
       });
+      if(panels.length>1)return i.reply(deny('Hay más de un panel con ese nombre. Usa un nombre de panel único.'));
+      const p=panels[0];
       if(!p)return i.reply(deny('Panel no encontrado.'));
 
       const ch=i.guild.channels.cache.get(p.channelId);
