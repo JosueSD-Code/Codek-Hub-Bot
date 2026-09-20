@@ -2,8 +2,12 @@ import { PermissionFlagsBits } from 'discord.js';
 
 export const ADMIN=PermissionFlagsBits.Administrator;
 
-export function isAdmin(member){
-  return Boolean(member?.permissions?.has(ADMIN));
+export function isAdmin(value){
+  return Boolean(
+    value?.memberPermissions?.has?.(ADMIN) ||
+    value?.permissions?.has?.(ADMIN) ||
+    value?.member?.permissions?.has?.(ADMIN)
+  );
 }
 
 export function deny(content){
