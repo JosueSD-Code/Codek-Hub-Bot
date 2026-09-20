@@ -696,16 +696,21 @@ client.on(Events.InteractionCreate,async i=>{
       const ch=c.channelId?i.guild.channels.cache.get(c.channelId):null;
       if(!target||!targetMember||target.bot||!ch?.isTextBased())return i.reply(deny('El usuario o canal de vouches ya no existe o el usuario no pertenece al servidor.'));
 
-      await prisma.vouch.create({
-        data:{
-          guildId:i.guildId,
-          targetId,
-          reviewerId:i.user.id,
-          reviewType:type,
-          rating,
-          text
-        }
-      });
+      try{
+        await prisma.vouch.create({
+          data:{
+            guildId:i.guildId,
+            targetId,
+            reviewerId:i.user.id,
+            reviewType:type,
+            rating,
+            text
+          }
+        });
+      }catch(e){
+        if(e?.code==='P2002')return i.reply(deny('Ya has dejado un vouch para este usuario.'));
+        throw e;
+      }
 
       const x=context(target,i.guild,ch,{
         target:target.toString(),
@@ -762,15 +767,22 @@ client.on(Events.InteractionCreate,async i=>{
       const ch=i.options.getChannel('canal');
       if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
 
+      const rawColor=i.options.getString('color');
+      const image=i.options.getString('imagen');
+      const thumbnail=i.options.getString('thumbnail');
+      if(rawColor&&!isHexColor(rawColor))return i.reply(deny('El color debe ser HEX de 6 dígitos, por ejemplo 5865F2.'));
+      if(image&&!safeUrl(image))return i.reply(deny('La URL de imagen no es válida. Usa una URL http/https.'));
+      if(thumbnail&&!safeUrl(thumbnail))return i.reply(deny('La URL del thumbnail no es válida. Usa una URL http/https.'));
+
       const data={
         enabled:true,
         channelId:ch.id,
         message:i.options.getString('mensaje'),
         title:i.options.getString('titulo'),
         description:i.options.getString('descripcion'),
-        color:i.options.getString('color'),
-        image:i.options.getString('imagen'),
-        thumbnail:i.options.getString('thumbnail'),
+        color:rawColor,
+        image,
+        thumbnail,
         footer:i.options.getString('footer')
       };
 
@@ -798,9 +810,15 @@ client.on(Events.InteractionCreate,async i=>{
       const raw=i.options.getString('roles');
       const roles=roleIds(i.guild,raw);
       const cool=i.options.getInteger('cooldown')??60;
+      const rawColor=i.options.getString('color');
+      const image=i.options.getString('imagen');
+      const thumbnail=i.options.getString('thumbnail');
 
       if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
       if(raw&&!roles.length)return i.reply(deny('No se encontró ningún rol válido.'));
+      if(rawColor&&!isHexColor(rawColor))return i.reply(deny('El color debe ser HEX de 6 dígitos, por ejemplo 5865F2.'));
+      if(image&&!safeUrl(image))return i.reply(deny('La URL de imagen no es válida. Usa una URL http/https.'));
+      if(thumbnail&&!safeUrl(thumbnail))return i.reply(deny('La URL del thumbnail no es válida. Usa una URL http/https.'));
 
       const data={
         enabled:true,
@@ -809,9 +827,9 @@ client.on(Events.InteractionCreate,async i=>{
         cooldown:cool,
         title:i.options.getString('titulo'),
         description:i.options.getString('descripcion'),
-        color:i.options.getString('color'),
-        image:i.options.getString('imagen'),
-        thumbnail:i.options.getString('thumbnail'),
+        color:rawColor,
+        image,
+        thumbnail,
         footer:i.options.getString('footer')
       };
 
@@ -884,17 +902,22 @@ client.on(Events.InteractionCreate,async i=>{
         });
         if(exists)return i.reply(deny('Ya existe un autoresponder con ese trigger.'));
 
-        await prisma.autoResponder.create({
-          data:{
-            guild:{connect:{id:i.guildId}},
-            trigger,
-            response,
-            matchType:i.options.getString('modo')||'contains',
-            embedTitle:i.options.getString('titulo'),
-            embedDescription:i.options.getString('descripcion'),
-            embedColor:i.options.getString('color')
-          }
-        });
+        try{
+          await prisma.autoResponder.create({
+            data:{
+              guild:{connect:{id:i.guildId}},
+              trigger,
+              response,
+              matchType:i.options.getString('modo')||'contains',
+              embedTitle:i.options.getString('titulo'),
+              embedDescription:i.options.getString('descripcion'),
+              embedColor:i.options.getString('color')
+            }
+          });
+        }catch(e){
+          if(e?.code==='P2002')return i.reply(deny('Ya existe un autoresponder con ese trigger.'));
+          throw e;
+        }
         await audit(i.guildId,i.user.id,'autoresponder','created',trigger);
         return i.reply(deny('Autoresponder creado.'));
       }
@@ -1050,8 +1073,9 @@ client.on(Events.InteractionCreate,async i=>{
       if(!ch?.isTextBased())return i.reply(deny('El canal configurado del panel ya no existe.'));
 
       if(!p.categories.length)return i.reply(deny('El panel no tiene categorías.'));
+      if(p.categories.length>25)return i.reply(deny('Discord permite un máximo de 25 categorías por panel. Elimina algunas categorías antes de publicarlo.'));
 
-      const options=p.categories.slice(0,25).map(c=>({
+      const options=p.categories.map(c=>({
         label:c.name.slice(0,100),
         value:c.id,
         description:(c.description||'Abrir ticket').slice(0,100),
