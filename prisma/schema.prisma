@@ -66,6 +66,7 @@ model TicketQuestion {
   placeholder String?
   required    Boolean        @default(true)
   createdAt   DateTime       @default(now())
+  @@index([categoryId, label])
 }
 
 model Ticket {
@@ -177,6 +178,7 @@ model AutoResponder {
   enabled         Boolean  @default(true)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
+  @@index([guildId, enabled, trigger])
 }
 
 model PresenceConfig {
@@ -199,4 +201,6 @@ model AuditLog {
   action    String
   details   String?
   createdAt DateTime @default(now())
+  @@index([guildId, createdAt])
+  @@index([guildId, module, action])
 }
