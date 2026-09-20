@@ -142,6 +142,14 @@ const normalizeEmoji=(guild,value)=>{
 };
 
 const emojiExists=(guild,value)=>Boolean(normalizeEmoji(guild,value));
+const isSnowflake=value=>/^\\d{17,20}$/.test(String(value??''));
+const validChannel=(guild,id,type=ChannelType.GuildText)=>{
+  if(!isSnowflake(id))return null;
+  const ch=guild?.channels?.cache?.get(id);
+  return ch?.type===type?ch:null;
+};
+const normalizeText=(value,max=2000)=>clip(String(value??'').trim(),max);
+
 const context=(u,g,ch,extra={})=>{
   const avatar=u?.displayAvatarURL?.({size:1024,extension:'png'})||u?.displayAvatarURL?.()||'';
   const guildIcon=g?.iconURL?.({size:1024,extension:'png'})||'';
@@ -383,18 +391,16 @@ async function closeTicket(i,t){
   closeLocks.add(t.id);
   try{
     const html=await transcript(i.channel,t);
-    await prisma.ticket.update({
-      where:{id:t.id},
-      data:{
-        status:'closed',
-        closedAt:new Date(),
-        transcript:{
-          upsert:{
-            update:{html},
-            create:{html}
-          }
-        }
-      }
+    const closedAt=new Date();
+    const updated=await prisma.ticket.updateMany({
+      where:{id:t.id,status:'open'},
+      data:{status:'closed',closedAt}
+    });
+    if(!updated.count)return i.reply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
+    await prisma.ticketTranscript.upsert({
+      where:{ticketId:t.id},
+      update:{html},
+      create:{ticketId:t.id,html}
     });
     await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
     await logToChannel(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.');
@@ -761,16 +767,29 @@ client.on(Events.InteractionCreate,async i=>{
       const ch=i.options.getChannel('canal');
       if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
 
+      const colorValue=i.options.getString('color');
+      const imageValue=i.options.getString('imagen');
+      const thumbnailValue=i.options.getString('thumbnail');
+      if(colorValue&&!/^(?:#?[0-9a-fA-F]{6})$/.test(colorValue.trim())){
+        return i.reply(deny('El color debe estar en formato HEX, por ejemplo #5865F2.'));
+      }
+      if(imageValue&&!safeUrl(imageValue)){
+        return i.reply(deny('La URL de la imagen no es válida. Usa una URL http/https.'));
+      }
+      if(thumbnailValue&&!safeUrl(thumbnailValue)){
+        return i.reply(deny('La URL del thumbnail no es válida. Usa una URL http/https.'));
+      }
+
       const data={
         enabled:true,
         channelId:ch.id,
-        message:i.options.getString('mensaje'),
-        title:i.options.getString('titulo'),
-        description:i.options.getString('descripcion'),
-        color:i.options.getString('color'),
-        image:i.options.getString('imagen'),
-        thumbnail:i.options.getString('thumbnail'),
-        footer:i.options.getString('footer')
+        message:normalizeText(i.options.getString('mensaje'),2000),
+        title:normalizeText(i.options.getString('titulo'),256)||null,
+        description:normalizeText(i.options.getString('descripcion'),4096)||null,
+        color:colorValue?.trim()||null,
+        image:imageValue?.trim()||null,
+        thumbnail:thumbnailValue?.trim()||null,
+        footer:normalizeText(i.options.getString('footer'),2048)||null
       };
 
       await prisma.welcomeConfig.upsert({
@@ -801,17 +820,30 @@ client.on(Events.InteractionCreate,async i=>{
       if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
       if(raw&&!roles.length)return i.reply(deny('No se encontró ningún rol válido.'));
 
+      const colorValue=i.options.getString('color');
+      const imageValue=i.options.getString('imagen');
+      const thumbnailValue=i.options.getString('thumbnail');
+      if(colorValue&&!/^(?:#?[0-9a-fA-F]{6})$/.test(colorValue.trim())){
+        return i.reply(deny('El color debe estar en formato HEX, por ejemplo #5865F2.'));
+      }
+      if(imageValue&&!safeUrl(imageValue)){
+        return i.reply(deny('La URL de la imagen no es válida. Usa una URL http/https.'));
+      }
+      if(thumbnailValue&&!safeUrl(thumbnailValue)){
+        return i.reply(deny('La URL del thumbnail no es válida. Usa una URL http/https.'));
+      }
+
       const data={
         enabled:true,
         channelId:ch.id,
         allowedRoleIds:roles,
         cooldown:cool,
-        title:i.options.getString('titulo'),
-        description:i.options.getString('descripcion'),
-        color:i.options.getString('color'),
-        image:i.options.getString('imagen'),
-        thumbnail:i.options.getString('thumbnail'),
-        footer:i.options.getString('footer')
+        title:normalizeText(i.options.getString('titulo'),256)||null,
+        description:normalizeText(i.options.getString('descripcion'),4096)||null,
+        color:colorValue?.trim()||null,
+        image:imageValue?.trim()||null,
+        thumbnail:thumbnailValue?.trim()||null,
+        footer:normalizeText(i.options.getString('footer'),2048)||null
       };
 
       await prisma.vouchConfig.upsert({
@@ -1045,8 +1077,8 @@ client.on(Events.InteractionCreate,async i=>{
       const p=panels[0];
       if(!p)return i.reply(deny('Panel no encontrado.'));
 
-      const ch=i.guild.channels.cache.get(p.channelId);
-      if(!ch?.isTextBased())return i.reply(deny('El canal configurado del panel ya no existe.'));
+      const ch=validChannel(i.guild,p.channelId);
+      if(!ch)return i.reply(deny('El canal configurado del panel ya no existe o ya no es un canal de texto.'));
 
       if(!p.categories.length)return i.reply(deny('El panel no tiene categorías.'));
 
