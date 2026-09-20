@@ -57,29 +57,21 @@ El bot necesita los intents privilegiados **Guild Members** y **Message Content*
 
 Usa Prisma con PostgreSQL.
 
-### Desarrollo rápido
+### Desarrollo
 
-Para sincronizar directamente el esquema con una base de datos de desarrollo:
+Para sincronizar el esquema con la base de datos local:
 
 `npm run db:push`
 
-### Migraciones
+Para validar el esquema:
 
-El repositorio incluye una migración inicial alineada con `schema.prisma`.
+`npm run db:validate`
 
-Para desarrollo:
+Para generar Prisma Client:
 
-`npm run db:migrate`
+`npm run db:generate`
 
-Para revisar el estado:
-
-`npm run db:migrate:status`
-
-Para staging/producción:
-
-`npm run db:migrate:deploy`
-
-No ejecutes `db:push` sobre una base de datos de producción sin revisar previamente el impacto del cambio.
+Actualmente el proyecto está orientado a desarrollo con `db push`; no se mantiene una historia de migraciones versionada en el repositorio todavía. Antes de llevar la base de datos a staging/producción conviene baselinar el esquema estable y empezar a versionar migraciones. No ejecutes `db:push` sobre una base de datos de producción sin revisar previamente el impacto del cambio.
 
 ## Producción
 
