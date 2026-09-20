@@ -113,8 +113,6 @@ model TicketTranscript {
   ticket    Ticket   @relation(fields: [ticketId], references: [id], onDelete: Cascade)
   html      String
   createdAt DateTime @default(now())
-  @@index([guildId, createdAt])
-  @@index([guildId, module, action])
 }
 
 model WelcomeConfig {
