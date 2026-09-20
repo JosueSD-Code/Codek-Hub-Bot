@@ -190,26 +190,6 @@ async function logToChannel(g,title,description){
   }
 }
 
-async function nextNumber(guildId,categoryId){
-  return prisma.$transaction(async tx=>{
-    const k='codek:'+guildId+':'+categoryId;
-    let locked=false;
-
-    while(!locked){
-      const rows=await tx.$queryRaw`SELECT pg_try_advisory_xact_lock(hashtext(${k})) AS locked`;
-      locked=Boolean(rows[0]?.locked);
-      if(!locked)await new Promise(resolve=>setTimeout(resolve,25));
-    }
-
-    const last=await tx.ticket.findFirst({
-      where:{guildId,categoryId},
-      orderBy:{number:'desc'},
-      select:{number:true}
-    });
-    return (last?.number||0)+1;
-  });
-}
-
 async function presence(){
   const p=await prisma.presenceConfig.findFirst({
     where:{enabled:true},
