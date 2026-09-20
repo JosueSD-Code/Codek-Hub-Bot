@@ -17,12 +17,29 @@ Node.js, JavaScript ES Modules, discord.js, Prisma, PostgreSQL, dotenv y Zod.
 ## Comandos
 
 - `/tickets` — configuración y publicación de tickets
+  - Los paneles y categorías se administran por **nombre**, no por IDs visibles.
 - `/welcome` — configuración de bienvenida
 - `/vouch` — crear una reseña
 - `/vouch-config` — configuración de vouches
 - `/autoresponder` — gestionar respuestas automáticas
 - `/presence` — Rich Presence del bot
 - `/variables` — variables disponibles
+
+## Mantenimiento
+
+Los administradores pueden mencionar **@Codek Hub** dentro de un servidor para recibir un resumen interno del estado del bot.
+
+La respuesta de mantenimiento incluye, entre otros datos:
+
+- estado del bot y latencia
+- estado de PostgreSQL
+- paneles, categorías y tickets abiertos
+- estado de Vouch
+- autoresponders activos
+- Rich Presence
+- versión de Node.js, uptime y memoria
+
+Los usuarios sin permisos de administrador que mencionen al bot no reciben ninguna respuesta.
 
 ## Configuración
 
