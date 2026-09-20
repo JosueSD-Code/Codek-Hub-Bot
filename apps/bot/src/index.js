@@ -23,7 +23,7 @@ const cooldowns=new Map();
 const locks=new Set();
 const closeLocks=new Set();
 import { ADMIN,isAdmin,deny,roleIdsByName } from './utils/permissions.js';
-import { clip,safeUrl } from './utils/validation.js';
+import { clip,safeUrl,isHexColor,requiredText } from './utils/validation.js';
 import { color } from './utils/embeds.js';
 
 const commands=[
@@ -303,7 +303,7 @@ async function createTicket(i,cat,answers=[]){
       await ch.delete().catch(()=>{});
       if(e.message==='TICKET_DUPLICATE'){
         const oldChannel=i.guild.channels.cache.get(e.channelId);
-        return i.reply(deny(oldChannel?'Ya tienes un ticket abierto: '+oldChannel:'Ya tienes un ticket abierto para esta categoría.'));
+        return i.editReply(deny(oldChannel?'Ya tienes un ticket abierto: '+oldChannel:'Ya tienes un ticket abierto para esta categoría.'));
       }
       throw e;
     }
@@ -336,11 +336,11 @@ async function createTicket(i,cat,answers=[]){
 
     await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n);
     await logToChannel(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.');
-    return i.reply(deny('Ticket creado: '+ch));
+    return i.editReply(deny('Ticket creado: '+ch));
   }catch(e){
     logger.error('Ticket creation failed',{error:e.message});
     if(ch)await ch.delete().catch(()=>{});
-    return i.reply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.')).catch(()=>{});
+    return (i.replied||i.deferred?i.editReply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.')):i.reply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.'))).catch(()=>{});
   }finally{
     locks.delete(key);
   }
@@ -381,20 +381,21 @@ async function transcript(ch,t){
 async function closeTicket(i,t){
   if(closeLocks.has(t.id))return i.reply(deny('El cierre ya está en proceso.'));
   closeLocks.add(t.id);
+  if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
   try{
     const html=await transcript(i.channel,t);
-    await prisma.ticket.update({
-      where:{id:t.id},
-      data:{
-        status:'closed',
-        closedAt:new Date(),
-        transcript:{
-          upsert:{
-            update:{html},
-            create:{html}
-          }
-        }
-      }
+    const closedAt=new Date();
+    const updated=await prisma.ticket.updateMany({
+      where:{id:t.id,status:'open'},
+      data:{status:'closed',closedAt}
+    });
+    if(!updated.count){
+      return i.editReply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
+    }
+    await prisma.ticketTranscript.upsert({
+      where:{ticketId:t.id},
+      update:{html},
+      create:{ticketId:t.id,html}
     });
     await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
     await logToChannel(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.');
@@ -408,11 +409,11 @@ async function closeTicket(i,t){
       });
     }
 
-    await i.reply(deny('Ticket cerrado. Transcripción guardada.'));
+    await i.editReply(deny('Ticket cerrado. Transcripción guardada.'));
     setTimeout(()=>i.channel?.delete().catch(()=>{}),2500);
   }catch(e){
     logger.error('Ticket close failed',{error:e.message});
-    if(!i.replied&&!i.deferred)await i.reply(deny('No se pudo cerrar el ticket.'));
+    if(i.replied||i.deferred)await i.editReply(deny('No se pudo cerrar el ticket.')).catch(()=>{}); else await i.reply(deny('No se pudo cerrar el ticket.')).catch(()=>{});
   }finally{
     closeLocks.delete(t.id);
   }
