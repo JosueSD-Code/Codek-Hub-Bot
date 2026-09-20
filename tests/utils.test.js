@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PermissionFlagsBits, PermissionsBitField } from 'discord.js';
-import { isAdmin } from '../apps/bot/src/utils/permissions.js';
+import { isAdmin,roleIdsByName } from '../apps/bot/src/utils/permissions.js';
 import { isHexColor,requiredText,safeUrl,isUnicodeEmoji } from '../apps/bot/src/utils/validation.js';
 
 test('isAdmin acepta GuildMember e Interaction',()=>{
@@ -32,4 +32,12 @@ test('isUnicodeEmoji distingue emoji de texto arbitrario',()=>{
 test('requiredText rechaza valores vacíos',()=>{
   assert.throws(()=>requiredText('   ','Nombre'));
   assert.equal(requiredText(' Codek ','Nombre'),'Codek');
+});
+
+test('roleIdsByName elimina duplicados y compara sin distinguir mayúsculas',()=>{
+  const roles={cache:new Map([
+    ['1',{id:'1',name:'Soporte'}],
+    ['2',{id:'2',name:'Moderación'}]
+  ])};
+  assert.deepEqual(roleIdsByName({roles},' soporte, SOPORTE, moderación '),['1','2']);
 });
