@@ -132,6 +132,11 @@ const commands=[
       .addStringOption(o=>o.setName('texto').setDescription('Texto').setRequired(true)))
     .addSubcommand(s=>s.setName('reset').setDescription('Restablece.')),
 
+  new SlashCommandBuilder()
+    .setName('purge').setDescription('Elimina mensajes del canal actual.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addIntegerOption(o=>o.setName('cantidad').setDescription('Cantidad de mensajes a eliminar').setMinValue(1).setMaxValue(10000))
+    .addBooleanOption(o=>o.setName('canal').setDescription('Elimina todo el historial del canal actual')),
   new SlashCommandBuilder().setName('help').setDescription('Muestra la ayuda completa de Codek Hub.'),
   new SlashCommandBuilder().setName('variables').setDescription('Muestra variables.')
 ];
@@ -203,6 +208,7 @@ function helpEmbed(){
         '/tickets pregunta-list',
         '/tickets pregunta-eliminar',
         '/tickets log',
+        '/tickets log-reset',
         '/tickets log-reset'
       ].join('\n')},
       {name:'👋 Bienvenida',value:'/welcome set\n/welcome reset'},
@@ -210,6 +216,7 @@ function helpEmbed(){
       {name:'🤖 Autoresponders',value:'/autoresponder add\n/autoresponder remove\n/autoresponder list'},
       {name:'🎮 Rich Presence',value:'/presence set\n/presence reset'},
       {name:'🧩 Variables',value:'/variables'},
+      {name:'🧹 Moderación',value:'/purge cantidad:100\n/purge canal:true\nTambién puedes usar **?purge 100** o **?purge canal**.'},
       {name:'ℹ️ Ayuda rápida',value:'También puedes mencionar a @Codek Hub y escribir **help**, **ayuda** o **comandos**.'}
     )
     .setFooter({text:'Los comandos de configuración requieren permisos de administrador.'})
@@ -247,36 +254,87 @@ async function deploy(){
   const rest=new REST({version:'10'}).setToken(env.DISCORD_TOKEN);
   const body=commands.map(c=>c.toJSON());
 
-  if(env.DEV_GUILD_ID){
-    await rest.put(
-      Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID,env.DEV_GUILD_ID),
-      {body}
-    );
-    await rest.put(
-      Routes.applicationCommands(env.DISCORD_CLIENT_ID),
-      {body:[]}
-    );
+  // Registrar siempre los comandos como comandos de servidor para que
+  // los cambios aparezcan inmediatamente en todos los servidores donde
+  // está instalado el bot. Se limpian los comandos globales para evitar
+  // duplicados entre versiones globales y de servidor.
+  await rest.put(Routes.applicationCommands(env.DISCORD_CLIENT_ID),{body:[]});
 
-    for(const guild of client.guilds.cache.values()){
-      if(guild.id===env.DEV_GUILD_ID)continue;
+  let deployed=0;
+  for(const guild of client.guilds.cache.values()){
+    try{
       await rest.put(
         Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID,guild.id),
-        {body:[]}
-      ).catch(e=>logger.warn('Could not clear guild commands',{guildId:guild.id,error:e.message}));
+        {body}
+      );
+      deployed++;
+    }catch(e){
+      logger.warn('Could not deploy guild commands',{
+        guildId:guild.id,
+        error:e.message
+      });
+    }
+  }
+
+  logger.info('Commands deployed to guilds',{
+    count:body.length,
+    guilds:deployed
+  });
+}
+
+async function purgeChannelMessages(channel,limit=100){
+  if(!channel?.isTextBased?.()||!channel?.messages?.fetch)return 0;
+
+  const max=Math.max(1,Math.min(Number(limit)||1,10000));
+  let remaining=max;
+  let deleted=0;
+  let before;
+
+  while(remaining>0){
+    const batch=await channel.messages.fetch({
+      limit:Math.min(100,remaining),
+      ...(before?{before}:{})
+    });
+    if(!batch.size)break;
+
+    const now=Date.now();
+    const recent=[];
+    const old=[];
+
+    for(const message of batch.values()){
+      if(now-message.createdTimestamp<14*24*60*60*1000)recent.push(message);
+      else old.push(message);
     }
 
-    logger.info('Commands deployed to development guild',{guildId:env.DEV_GUILD_ID,count:body.length});
-    return;
+    if(recent.length){
+      const removed=await channel.bulkDelete(recent,true);
+      deleted+=removed.size;
+      remaining-=removed.size;
+    }
+
+    for(const message of old){
+      if(remaining<=0)break;
+      await message.delete().catch(e=>logger.warn('Old message delete failed',{error:e.message}));
+      deleted++;
+      remaining--;
+    }
+
+    const last=batch.last();
+    before=last?.id;
+    if(!before||batch.size<Math.min(100,remaining+batch.size))break;
   }
 
-  await rest.put(Routes.applicationCommands(env.DISCORD_CLIENT_ID),{body});
-  for(const guild of client.guilds.cache.values()){
-    await rest.put(
-      Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID,guild.id),
-      {body:[]}
-    ).catch(e=>logger.warn('Could not clear guild commands',{guildId:guild.id,error:e.message}));
+  return deleted;
+}
+
+async function purgeEverything(channel){
+  let total=0;
+  while(true){
+    const deleted=await purgeChannelMessages(channel,100);
+    total+=deleted;
+    if(deleted===0||deleted<100)break;
   }
-  logger.info('Commands deployed globally',{count:body.length});
+  return total;
 }
 
 async function findUniquePanel(guildId,name){
@@ -603,6 +661,45 @@ client.on(Events.MessageCreate,async m=>{
       return m.reply({embeds:[statusEmbed]});
     }
 
+    const prefixMatch=m.content.trim().match(/^\\?purge(?:\\s+(.+))?$/i);
+    if(prefixMatch){
+      if(!m.member?.permissions?.has(PermissionFlagsBits.ManageMessages)){
+        return m.reply('Necesitas el permiso **Gestionar mensajes** para usar ?purge.');
+      }
+
+      const argument=String(prefixMatch[1]??'').trim().toLowerCase();
+      const purgeAll=argument==='canal'||argument==='channel'||argument==='todo'||argument==='all';
+      const amount=Number(argument);
+
+      if(!purgeAll&&!Number.isInteger(amount)){
+        return m.reply('Uso: **?purge 100** o **?purge canal**.');
+      }
+
+      if(!purgeAll&&(amount<1||amount>10000)){
+        return m.reply('La cantidad debe estar entre **1 y 10000**.');
+      }
+
+      const notice=await m.reply('🧹 Limpiando mensajes...');
+      try{
+        const deleted=purgeAll
+          ?await purgeEverything(m.channel)
+          :await purgeChannelMessages(m.channel,amount);
+
+        await audit(m.guildId,m.author.id,'moderation','purge',purgeAll?'all:'+deleted:String(deleted));
+
+        // El propio comando y el aviso también forman parte del historial.
+        await notice.delete().catch(()=>{});
+        await m.delete().catch(()=>{});
+        if(!purgeAll&&deleted<amount){
+          await m.channel.send('🧹 Se eliminaron **'+deleted+'** mensajes disponibles en este canal.').then(x=>setTimeout(()=>x.delete().catch(()=>{}),4000)).catch(()=>{});
+        }
+      }catch(e){
+        logger.error('Prefix purge failed',{error:e.message});
+        await notice.edit('No pude eliminar los mensajes. Verifica que el bot tenga **Gestionar mensajes** y **Ver historial de mensajes** en este canal.').catch(()=>{});
+      }
+      return;
+    }
+
     const r=await findAutoResponder(m.content,m.guildId);
     if(!r||!r.response?.trim())return;
 
@@ -843,6 +940,41 @@ client.on(Events.InteractionCreate,async i=>{
 
     if(i.commandName==='help'){
       return i.reply({embeds:[helpEmbed()]});
+    }
+
+    if(i.commandName==='purge'){
+      if(!i.member?.permissions?.has(PermissionFlagsBits.ManageMessages)){
+        return i.reply(deny('Necesitas el permiso **Gestionar mensajes** para usar este comando.'));
+      }
+
+      const purgeAll=i.options.getBoolean('canal')===true;
+      const amount=i.options.getInteger('cantidad');
+
+      if(!purgeAll&&!amount){
+        return i.reply(deny('Indica una cantidad, por ejemplo **/purge cantidad:100**, o usa **canal:true** para limpiar todo el canal.'));
+      }
+
+      if(purgeAll&&amount){
+        return i.reply(deny('Usa solo una opción: **cantidad** o **canal:true**.'));
+      }
+
+      await i.deferReply({flags:64});
+
+      try{
+        const deleted=purgeAll
+          ?await purgeEverything(i.channel)
+          :await purgeChannelMessages(i.channel,amount);
+
+        await audit(i.guildId,i.user.id,'moderation','purge',purgeAll?'all:'+deleted:String(deleted));
+        return i.editReply(deny(
+          deleted
+            ?'🧹 Se eliminaron **'+deleted+'** mensajes de este canal.'
+            :'No encontré mensajes que pudiera eliminar.'
+        ));
+      }catch(e){
+        logger.error('Purge failed',{error:e.message});
+        return i.editReply(deny('No pude eliminar los mensajes. Verifica que el bot tenga **Gestionar mensajes** y **Ver historial de mensajes** en este canal.'));
+      }
     }
 
     if(i.commandName==='variables'){
