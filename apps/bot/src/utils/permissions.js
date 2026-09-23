@@ -18,8 +18,9 @@ export function roleIdsByName(guild,names){
     .map(value=>value.trim())
     .filter(Boolean)
     .map(name=>name.toLowerCase()))];
+  const roles=[...guild.roles.cache.values?.() ?? guild.roles.cache];
   return requested
-    .map(name=>guild.roles.cache.find(role=>role.name.toLowerCase()===name))
+    .map(name=>roles.find(role=>role.name.toLowerCase()===name))
     .filter(Boolean)
     .map(role=>role.id);
 }
