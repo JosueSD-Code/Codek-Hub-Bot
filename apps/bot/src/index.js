@@ -132,6 +132,7 @@ const commands=[
       .addStringOption(o=>o.setName('texto').setDescription('Texto').setRequired(true)))
     .addSubcommand(s=>s.setName('reset').setDescription('Restablece.')),
 
+  new SlashCommandBuilder().setName('help').setDescription('Muestra la ayuda completa de Codek Hub.'),
   new SlashCommandBuilder().setName('variables').setDescription('Muestra variables.')
 ];
 
@@ -183,6 +184,37 @@ const context=(u,g,ch,extra={})=>{
     ...extra
   };
 };
+
+function helpEmbed(){
+  return new EmbedBuilder()
+    .setTitle('Codek Hub • Ayuda')
+    .setDescription('Guía rápida de las funciones y comandos disponibles.')
+    .setColor(0x5865F2)
+    .addFields(
+      {name:'🎫 Tickets',value:[
+        '/tickets panel',
+        '/tickets categoria',
+        '/tickets pregunta',
+        '/tickets publicar',
+        '/tickets panel-list',
+        '/tickets panel-eliminar',
+        '/tickets categoria-list',
+        '/tickets categoria-eliminar',
+        '/tickets pregunta-list',
+        '/tickets pregunta-eliminar',
+        '/tickets log',
+        '/tickets log-reset'
+      ].join('\n')},
+      {name:'👋 Bienvenida',value:'/welcome set\n/welcome reset'},
+      {name:'⭐ Vouches',value:'/vouch\n/vouch-config set\n/vouch-config reset'},
+      {name:'🤖 Autoresponders',value:'/autoresponder add\n/autoresponder remove\n/autoresponder list'},
+      {name:'🎮 Rich Presence',value:'/presence set\n/presence reset'},
+      {name:'🧩 Variables',value:'/variables'},
+      {name:'ℹ️ Ayuda rápida',value:'También puedes mencionar a @Codek Hub y escribir **help**, **ayuda** o **comandos**.'}
+    )
+    .setFooter({text:'Los comandos de configuración requieren permisos de administrador.'})
+    .setTimestamp();
+}
 
 async function logToChannel(g,title,description){
   try{
@@ -514,7 +546,20 @@ client.on(Events.MessageCreate,async m=>{
   try{
     const botMentioned=client.user&&m.mentions.users.has(client.user.id);
     if(botMentioned){
-      if(!m.member?.permissions?.has(ADMIN))return;
+      const mentionPattern=new RegExp('<@!?'+client.user.id+'>','g');
+      const mentionText=m.content.replace(mentionPattern,' ').trim().toLowerCase();
+      const helpRequested=/\b(?:help|ayuda|comandos|commands)\b/i.test(mentionText);
+
+      if(helpRequested){
+        return m.reply({embeds:[helpEmbed()]});
+      }
+
+      if(!m.member?.permissions?.has(ADMIN)){
+        return m.reply({
+          content:'¡Hola! Usa **@Codek Hub help** o **/help** para ver todo lo que puedo hacer.',
+          allowedMentions:{users:[]}
+        });
+      }
 
       const [panelCount,categoryCount,openTickets,vouchConfig,autoCount,presenceConfig]=await Promise.all([
         prisma.ticketPanel.count({where:{guildId:m.guildId}}),
@@ -545,36 +590,15 @@ client.on(Events.MessageCreate,async m=>{
           {name:'Ping',value:Math.round(client.ws.ping)+' ms',inline:true},
           {name:'Base de datos',value:dbOk?'🟢 Operativa':'🔴 Error',inline:true},
           {name:'Servidor',value:m.guild.name,inline:true},
-          {name:'Tickets',value:'Paneles: '+panelCount+'\nCategorías: '+categoryCount+'\nAbiertos: '+openTickets,inline:true},
+          {name:'Tickets',value:'Paneles: '+panelCount+'\\nCategorías: '+categoryCount+'\\nAbiertos: '+openTickets,inline:true},
           {name:'Vouch',value:vouchConfig?.enabled?'🟢 Activo':'⚪ Desactivado',inline:true},
           {name:'Autoresponder',value:autoCount+' activos',inline:true},
           {name:'Rich Presence',value:presenceConfig?.enabled?'🟢 '+presenceConfig.type+': '+clip(presenceConfig.text,80):'⚪ Sin configurar',inline:true},
-          {name:'Runtime',value:'Node '+process.version+'\nUptime: '+formatUptime(uptime),inline:true},
+          {name:'Runtime',value:'Node '+process.version+'\\nUptime: '+formatUptime(uptime),inline:true},
           {name:'Memoria',value:Math.round(memory.rss/1024/1024)+' MB RSS',inline:true}
         )
         .setFooter({text:'Solo visible para administradores'})
         .setTimestamp();
-
-      const maintenanceText=m.content.replace(new RegExp('<@!?'+client.user.id+'>','g'),' ').trim().toLowerCase();
-      const helpRequested=maintenanceText.split(/\s+/).some(word=>['help','ayuda','comandos','commands'].includes(word));
-      if(helpRequested){
-        const helpEmbed=new EmbedBuilder()
-          .setTitle('Codek Hub • Ayuda')
-          .setDescription('Guía rápida de administración y funciones disponibles.')
-          .setColor(0x5865F2)
-          .addFields(
-            {name:'🎫 Tickets',value:'/tickets panel, /tickets categoria, /tickets pregunta, /tickets publicar, /tickets panel-list, /tickets panel-eliminar, /tickets categoria-list, /tickets categoria-eliminar, /tickets pregunta-list, /tickets pregunta-eliminar, /tickets log, /tickets log-reset'},
-            {name:'👋 Welcome',value:'/welcome set y /welcome reset'},
-            {name:'⭐ Vouch',value:'/vouch y /vouch-config set/reset'},
-            {name:'🤖 Autoresponder',value:'/autoresponder add/remove/list'},
-            {name:'🎮 Rich Presence',value:'/presence set/reset'},
-            {name:'🧩 Variables',value:'/variables'},
-            {name:'🛠️ Mantenimiento',value:'Menciona @Codek Hub y escribe help para esta ayuda o menciona solo al bot para ver el estado interno.'}
-          )
-          .setFooter({text:'Solo los administradores reciben esta ayuda.'})
-          .setTimestamp();
-        return m.reply({embeds:[helpEmbed]});
-      }
 
       return m.reply({embeds:[statusEmbed]});
     }
@@ -816,6 +840,10 @@ client.on(Events.InteractionCreate,async i=>{
     }
 
     if(!i.isChatInputCommand())return;
+
+    if(i.commandName==='help'){
+      return i.reply({embeds:[helpEmbed()]});
+    }
 
     if(i.commandName==='variables'){
       return i.reply(deny([
