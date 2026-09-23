@@ -555,7 +555,8 @@ client.on(Events.MessageCreate,async m=>{
         .setFooter({text:'Solo visible para administradores'})
         .setTimestamp();
 
-      const helpRequested=/\\bhelp\\b/i.test(m.content.replace(new RegExp('<@!?'+client.user.id+'>','g'),' '));
+      const maintenanceText=m.content.replace(new RegExp('<@!?'+client.user.id+'>','g'),' ').trim().toLowerCase();
+      const helpRequested=maintenanceText.split(/\s+/).some(word=>['help','ayuda','comandos','commands'].includes(word));
       if(helpRequested){
         const helpEmbed=new EmbedBuilder()
           .setTitle('Codek Hub • Ayuda')
