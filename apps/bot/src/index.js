@@ -314,14 +314,17 @@ async function purgeChannelMessages(channel,limit=100){
 
     for(const message of old){
       if(remaining<=0)break;
-      await message.delete().catch(e=>logger.warn('Old message delete failed',{error:e.message}));
-      deleted++;
-      remaining--;
+      try{
+        await message.delete();
+        deleted++;
+        remaining--;
+      }catch(e){
+        logger.warn('Old message delete failed',{error:e.message});
+      }
     }
 
-    const last=batch.last();
-    before=last?.id;
-    if(!before||batch.size<Math.min(100,remaining+batch.size))break;
+    before=batch.last()?.id;
+    if(!before)break;
   }
 
   return deleted;
