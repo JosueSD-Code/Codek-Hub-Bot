@@ -84,7 +84,7 @@ const commands=[
       .addStringOption(o=>o.setName('imagen').setDescription('URL imagen'))
       .addStringOption(o=>o.setName('thumbnail').setDescription('URL thumbnail'))
       .addStringOption(o=>o.setName('footer').setDescription('Footer')))
-    .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.'));
+    .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.'))),
 
   new SlashCommandBuilder()
     .setName('vouch-config').setDescription('Configura vouches.')
