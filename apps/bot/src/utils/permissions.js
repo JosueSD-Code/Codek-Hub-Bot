@@ -12,15 +12,25 @@ export function deny(content){
 }
 
 export function roleIdsByName(guild,names){
-  if(!guild?.roles?.cache)return [];
+  const cache=guild?.roles?.cache;
+  if(!cache)return [];
   const requested=[...new Set(String(names??'')
     .split(',')
     .map(value=>value.trim())
     .filter(Boolean)
     .map(name=>name.toLowerCase()))];
-  const roles=[...guild.roles.cache.values?.() ?? guild.roles.cache];
+
+  let roles=[];
+  if(typeof cache.values==='function'){
+    roles=[...cache.values()];
+  }else if(typeof cache[Symbol.iterator]==='function'){
+    roles=[...cache];
+  }else if(typeof cache==='object'){
+    roles=Object.values(cache);
+  }
+
   return requested
-    .map(name=>roles.find(role=>role.name.toLowerCase()===name))
+    .map(name=>roles.find(role=>String(role?.name??'').toLowerCase()===name))
     .filter(Boolean)
     .map(role=>role.id);
 }
