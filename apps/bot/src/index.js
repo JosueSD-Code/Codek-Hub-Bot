@@ -54,7 +54,23 @@ const commands=[
     .addSubcommand(s=>s.setName('publicar').setDescription('Publica panel.')
       .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true)))
     .addSubcommand(s=>s.setName('log').setDescription('Configura logs.')
-      .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true))),
+      .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true)))
+    .addSubcommand(s=>s.setName('log-reset').setDescription('Elimina la configuración de logs.'))
+    .addSubcommand(s=>s.setName('panel-list').setDescription('Lista paneles.'))
+    .addSubcommand(s=>s.setName('panel-eliminar').setDescription('Elimina un panel y su configuración.')
+      .addStringOption(o=>o.setName('nombre').setDescription('Nombre del panel').setRequired(true))
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true)))
+    .addSubcommand(s=>s.setName('categoria-list').setDescription('Lista categorías de un panel.')
+      .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true)))
+    .addSubcommand(s=>s.setName('categoria-eliminar').setDescription('Elimina una categoría y su configuración.')
+      .addStringOption(o=>o.setName('nombre').setDescription('Nombre de la categoría').setRequired(true))
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true)))
+    .addSubcommand(s=>s.setName('pregunta-list').setDescription('Lista preguntas de una categoría.')
+      .addStringOption(o=>o.setName('categoria').setDescription('Nombre de la categoría').setRequired(true)))
+    .addSubcommand(s=>s.setName('pregunta-eliminar').setDescription('Elimina una pregunta.')
+      .addStringOption(o=>o.setName('categoria').setDescription('Nombre de la categoría').setRequired(true))
+      .addStringOption(o=>o.setName('label').setDescription('Texto de la pregunta').setRequired(true))
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true))),
 
   new SlashCommandBuilder()
     .setName('welcome').setDescription('Configura bienvenida.')
@@ -67,7 +83,8 @@ const commands=[
       .addStringOption(o=>o.setName('color').setDescription('Color HEX'))
       .addStringOption(o=>o.setName('imagen').setDescription('URL imagen'))
       .addStringOption(o=>o.setName('thumbnail').setDescription('URL thumbnail'))
-      .addStringOption(o=>o.setName('footer').setDescription('Footer'))),
+      .addStringOption(o=>o.setName('footer').setDescription('Footer')))
+    .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.'));
 
   new SlashCommandBuilder()
     .setName('vouch-config').setDescription('Configura vouches.')
@@ -228,6 +245,34 @@ async function deploy(){
     ).catch(e=>logger.warn('Could not clear guild commands',{guildId:guild.id,error:e.message}));
   }
   logger.info('Commands deployed globally',{count:body.length});
+}
+
+async function findUniquePanel(guildId,name){
+  const rows=await prisma.ticketPanel.findMany({
+    where:{guildId,name:{equals:String(name??'').trim(),mode:'insensitive'}},
+    select:{id:true,name:true,channelId:true}
+  });
+  return {row:rows[0]||null,multiple:rows.length>1};
+}
+
+async function findUniqueCategory(guildId,name){
+  const rows=await prisma.ticketCategory.findMany({
+    where:{name:{equals:String(name??'').trim(),mode:'insensitive'},panel:{guildId}},
+    select:{id:true,name:true,panelId:true}
+  });
+  return {row:rows[0]||null,multiple:rows.length>1};
+}
+
+async function deleteOpenTicketsForCategory(guildId,categoryId){
+  const tickets=await prisma.ticket.findMany({
+    where:{guildId,categoryId,status:'open'},
+    select:{id:true,channelId:true}
+  });
+  for(const ticket of tickets){
+    const channel=client.channels.cache.get(ticket.channelId);
+    if(channel?.isTextBased())await channel.delete().catch(e=>logger.warn('Ticket channel delete failed',{error:e.message}));
+  }
+  return tickets.length;
 }
 
 async function createTicket(i,cat,answers=[]){
@@ -510,6 +555,26 @@ client.on(Events.MessageCreate,async m=>{
         .setFooter({text:'Solo visible para administradores'})
         .setTimestamp();
 
+      const helpRequested=/\\bhelp\\b/i.test(m.content.replace(new RegExp('<@!?'+client.user.id+'>','g'),' '));
+      if(helpRequested){
+        const helpEmbed=new EmbedBuilder()
+          .setTitle('Codek Hub • Ayuda')
+          .setDescription('Guía rápida de administración y funciones disponibles.')
+          .setColor(0x5865F2)
+          .addFields(
+            {name:'🎫 Tickets',value:'/tickets panel, /tickets categoria, /tickets pregunta, /tickets publicar, /tickets panel-list, /tickets panel-eliminar, /tickets categoria-list, /tickets categoria-eliminar, /tickets pregunta-list, /tickets pregunta-eliminar, /tickets log, /tickets log-reset'},
+            {name:'👋 Welcome',value:'/welcome set y /welcome reset'},
+            {name:'⭐ Vouch',value:'/vouch y /vouch-config set/reset'},
+            {name:'🤖 Autoresponder',value:'/autoresponder add/remove/list'},
+            {name:'🎮 Rich Presence',value:'/presence set/reset'},
+            {name:'🧩 Variables',value:'/variables'},
+            {name:'🛠️ Mantenimiento',value:'Menciona @Codek Hub y escribe help para esta ayuda o menciona solo al bot para ver el estado interno.'}
+          )
+          .setFooter({text:'Solo los administradores reciben esta ayuda.'})
+          .setTimestamp();
+        return m.reply({embeds:[helpEmbed]});
+      }
+
       return m.reply({embeds:[statusEmbed]});
     }
 
@@ -764,6 +829,11 @@ client.on(Events.InteractionCreate,async i=>{
 
     if(i.commandName==='welcome'){
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
+      if(i.options.getSubcommand()==='reset'){
+        await prisma.welcomeConfig.deleteMany({where:{guildId:i.guildId}});
+        await audit(i.guildId,i.user.id,'welcome','reset','Configuración de bienvenida eliminada.');
+        return i.reply(deny('Configuración de bienvenida eliminada.'));
+      }
       const ch=i.options.getChannel('canal');
       if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
 
@@ -968,6 +1038,91 @@ client.on(Events.InteractionCreate,async i=>{
     if(i.commandName==='tickets'){
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
+
+      if(sub==='log-reset'){
+        await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});
+        await audit(i.guildId,i.user.id,'tickets','log_reset','Configuración de logs eliminada.');
+        return i.reply(deny('Configuración de logs eliminada.'));
+      }
+
+      if(sub==='panel-list'){
+        const rows=await prisma.ticketPanel.findMany({
+          where:{guildId:i.guildId},
+          include:{categories:{select:{name:true}}}
+        });
+        if(!rows.length)return i.reply(deny('No hay paneles configurados.'));
+        return i.reply(deny(rows.map(p=>'• **'+p.name+'** — '+p.categories.length+' categoría(s)').join('\\n')));
+      }
+
+      if(sub==='panel-eliminar'){
+        const name=i.options.getString('nombre').trim();
+        if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la eliminación con confirmar: true.'));
+        const found=await findUniquePanel(i.guildId,name);
+        if(found.multiple)return i.reply(deny('Hay varios paneles con ese nombre. Renómbralos para que cada panel tenga un nombre único.'));
+        if(!found.row)return i.reply(deny('Panel no encontrado.'));
+        const categories=await prisma.ticketCategory.findMany({where:{panelId:found.row.id},select:{id:true,name:true}});
+        let openCount=0;
+        for(const c of categories)openCount+=await deleteOpenTicketsForCategory(i.guildId,c.id);
+        await prisma.ticketPanel.delete({where:{id:found.row.id}});
+        await audit(i.guildId,i.user.id,'tickets','panel_deleted',name);
+        return i.reply(deny('Panel **'+name+'** eliminado. '+openCount+' ticket(s) abierto(s) fueron cerrados eliminando sus canales.'));
+      }
+
+      if(sub==='categoria-list'){
+        const panelName=i.options.getString('panel').trim();
+        const found=await findUniquePanel(i.guildId,panelName);
+        if(found.multiple)return i.reply(deny('Hay varios paneles con ese nombre. Usa un nombre de panel único.'));
+        if(!found.row)return i.reply(deny('Panel no encontrado.'));
+        const rows=await prisma.ticketCategory.findMany({
+          where:{panelId:found.row.id},
+          orderBy:{name:'asc'},
+          select:{name:true,description:true,supportRoleIds:true}
+        });
+        if(!rows.length)return i.reply(deny('Ese panel no tiene categorías.'));
+        return i.reply(deny(rows.map(c=>'• **'+c.name+'** — '+(c.description||'Sin descripción')+' — soporte: '+c.supportRoleIds.length+' rol(es)').join('\\n')));
+      }
+
+      if(sub==='categoria-eliminar'){
+        const name=i.options.getString('nombre').trim();
+        if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la eliminación con confirmar: true.'));
+        const found=await findUniqueCategory(i.guildId,name);
+        if(found.multiple)return i.reply(deny('Hay varias categorías con ese nombre. Usa nombres únicos de categoría.'));
+        if(!found.row)return i.reply(deny('Categoría no encontrada.'));
+        const openCount=await deleteOpenTicketsForCategory(i.guildId,found.row.id);
+        await prisma.ticketCategory.delete({where:{id:found.row.id}});
+        await audit(i.guildId,i.user.id,'tickets','category_deleted',name);
+        return i.reply(deny('Categoría **'+name+'** eliminada. '+openCount+' ticket(s) abierto(s) fueron cerrados eliminando sus canales.'));
+      }
+
+      if(sub==='pregunta-list'){
+        const categoryName=i.options.getString('categoria').trim();
+        const found=await findUniqueCategory(i.guildId,categoryName);
+        if(found.multiple)return i.reply(deny('Hay varias categorías con ese nombre. Usa nombres únicos de categoría.'));
+        if(!found.row)return i.reply(deny('Categoría no encontrada.'));
+        const rows=await prisma.ticketQuestion.findMany({
+          where:{categoryId:found.row.id},
+          orderBy:{createdAt:'asc'},
+          select:{label:true,required:true,placeholder:true}
+        });
+        if(!rows.length)return i.reply(deny('Esa categoría no tiene preguntas.'));
+        return i.reply(deny(rows.map((q,n)=>(n+1)+'. **'+q.label+'**'+(q.required?' — obligatoria':' — opcional')+(q.placeholder?' — placeholder: '+q.placeholder:'')).join('\\n')));
+      }
+
+      if(sub==='pregunta-eliminar'){
+        const categoryName=i.options.getString('categoria').trim();
+        const label=i.options.getString('label').trim();
+        if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la eliminación con confirmar: true.'));
+        const found=await findUniqueCategory(i.guildId,categoryName);
+        if(found.multiple)return i.reply(deny('Hay varias categorías con ese nombre. Usa nombres únicos de categoría.'));
+        if(!found.row)return i.reply(deny('Categoría no encontrada.'));
+        const q=await prisma.ticketQuestion.findFirst({
+          where:{categoryId:found.row.id,label:{equals:label,mode:'insensitive'}}
+        });
+        if(!q)return i.reply(deny('Pregunta no encontrada.'));
+        await prisma.ticketQuestion.delete({where:{id:q.id}});
+        await audit(i.guildId,i.user.id,'tickets','question_deleted',found.row.name+' / '+q.label);
+        return i.reply(deny('Pregunta eliminada de **'+found.row.name+'**.'));
+      }
 
       if(sub==='log'){
         const ch=i.options.getChannel('canal');
