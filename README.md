@@ -16,9 +16,14 @@ Node.js, JavaScript ES Modules, discord.js, Prisma, PostgreSQL, dotenv y Zod.
 
 ## Comandos
 
-- `/tickets` — configuración y publicación de tickets
-  - Los paneles y categorías se administran por **nombre**, no por IDs visibles.
-- `/welcome` — configuración de bienvenida
+- /tickets — configuración y publicación de tickets
+  - Los paneles y categorías se administran por nombre, no por IDs visibles.
+  - Incluye listado y eliminación de paneles, categorías y preguntas.
+  - Permite configurar o eliminar el canal de logs.
+  - Las eliminaciones destructivas requieren confirmación.
+- /welcome — configuración de bienvenida
+  - set configura el sistema.
+  - reset elimina su configuración.
 - `/vouch` — crear una reseña
 - `/vouch-config` — configuración de vouches
 - `/autoresponder` — gestionar respuestas automáticas
@@ -28,6 +33,8 @@ Node.js, JavaScript ES Modules, discord.js, Prisma, PostgreSQL, dotenv y Zod.
 ## Mantenimiento
 
 Los administradores pueden mencionar **@Codek Hub** dentro de un servidor para recibir un resumen interno del estado del bot.
+
+También pueden escribir **@Codek Hub help**, **@Codek Hub ayuda** o **@Codek Hub comandos** para recibir una guía completa de los módulos y comandos disponibles.
 
 La respuesta de mantenimiento incluye, entre otros datos:
 
