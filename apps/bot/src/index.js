@@ -698,7 +698,7 @@ client.on(Events.MessageCreate,async m=>{
       return m.reply({embeds:[statusEmbed]});
     }
 
-    const prefixMatch=m.content.trim().match(/^\?purge(?:\s+(.+))?$/i);
+    const prefixMatch=m.content.trim().match(/^[?¿]purge(?:\s+(.+))?$/i);
     if(prefixMatch){
       if(!m.member?.permissions?.has(PermissionFlagsBits.ManageMessages)){
         return m.reply('Necesitas el permiso **Gestionar mensajes** para usar ?purge.');
