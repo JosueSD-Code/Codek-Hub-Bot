@@ -465,7 +465,7 @@ async function createTicket(i,cat,answers=[]){
       category:cat.name,
       staff:supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
     });
-    const a=answers.length?'\\n\\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
+    const a=answers.length?'\n\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
 
     const ticketEmbed=new EmbedBuilder()
       .setTitle(clip(renderVariables('Ticket • '+cat.name,ticketContext),256))
@@ -690,11 +690,11 @@ client.on(Events.MessageCreate,async m=>{
           {name:'Miembros',value:String(m.guild.memberCount??m.guild.members.cache.size),inline:true},
           {name:'Roles',value:String(m.guild.roles.cache.size),inline:true},
           {name:'Canales',value:String(m.guild.channels.cache.size),inline:true},
-          {name:'Tickets',value:'Paneles: '+panelCount+'\\nCategorías: '+categoryCount+'\\nAbiertos: '+openTickets,inline:true},
+          {name:'Tickets',value:'Paneles: '+panelCount+'\nCategorías: '+categoryCount+'\nAbiertos: '+openTickets,inline:true},
           {name:'Vouch',value:vouchConfig?.enabled?'🟢 Activo':'⚪ Desactivado',inline:true},
           {name:'Autoresponder',value:autoCount+' activos',inline:true},
           {name:'Rich Presence',value:presenceConfig?.enabled?'🟢 '+presenceConfig.type+': '+clip(presenceConfig.text,80):'⚪ Sin configurar',inline:true},
-          {name:'Runtime',value:'Node '+process.version+'\\nUptime: '+formatUptime(uptime),inline:true},
+          {name:'Runtime',value:'Node '+process.version+'\nUptime: '+formatUptime(uptime),inline:true},
           {name:'Memoria',value:Math.round(memory.rss/1024/1024)+' MB RSS',inline:true}
         )
         .setFooter({text:'Solo visible para administradores'})
@@ -1254,7 +1254,7 @@ client.on(Events.InteractionCreate,async i=>{
           include:{categories:{select:{name:true}}}
         });
         if(!rows.length)return i.reply(deny('No hay paneles configurados.'));
-        return i.reply(deny(rows.map(p=>'• **'+p.name+'** — '+p.categories.length+' categoría(s)').join('\\n')));
+        return i.reply(deny(rows.map(p=>'• **'+p.name+'** — '+p.categories.length+' categoría(s)').join('\n')));
       }
 
       if(sub==='panel-reset'){
@@ -1349,7 +1349,7 @@ client.on(Events.InteractionCreate,async i=>{
           select:{name:true,description:true,supportRoleIds:true}
         });
         if(!rows.length)return i.reply(deny('Ese panel no tiene categorías.'));
-        return i.reply(deny(rows.map(c=>'• **'+c.name+'** — '+(c.description||'Sin descripción')+' — soporte: '+c.supportRoleIds.length+' rol(es)').join('\\n')));
+        return i.reply(deny(rows.map(c=>'• **'+c.name+'** — '+(c.description||'Sin descripción')+' — soporte: '+c.supportRoleIds.length+' rol(es)').join('\n')));
       }
 
       if(sub==='categoria-eliminar'){
@@ -1375,7 +1375,7 @@ client.on(Events.InteractionCreate,async i=>{
           select:{label:true,required:true,placeholder:true}
         });
         if(!rows.length)return i.reply(deny('Esa categoría no tiene preguntas.'));
-        return i.reply(deny(rows.map((q,n)=>(n+1)+'. **'+q.label+'**'+(q.required?' — obligatoria':' — opcional')+(q.placeholder?' — placeholder: '+q.placeholder:'')).join('\\n')));
+        return i.reply(deny(rows.map((q,n)=>(n+1)+'. **'+q.label+'**'+(q.required?' — obligatoria':' — opcional')+(q.placeholder?' — placeholder: '+q.placeholder:'')).join('\n')));
       }
 
       if(sub==='pregunta-eliminar'){
