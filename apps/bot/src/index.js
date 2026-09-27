@@ -57,6 +57,9 @@ const commands=[
       .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true)))
     .addSubcommand(s=>s.setName('log-reset').setDescription('Elimina la configuración de logs.'))
     .addSubcommand(s=>s.setName('panel-list').setDescription('Lista paneles.'))
+    .addSubcommand(s=>s.setName('panel-renombrar').setDescription('Renombra un panel.')
+      .addStringOption(o=>o.setName('nombre').setDescription('Nombre actual del panel').setRequired(true))
+      .addStringOption(o=>o.setName('nuevo-nombre').setDescription('Nuevo nombre del panel').setRequired(true)))
     .addSubcommand(s=>s.setName('panel-eliminar').setDescription('Elimina un panel y su configuración.')
       .addStringOption(o=>o.setName('nombre').setDescription('Nombre del panel').setRequired(true))
       .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true)))
@@ -202,13 +205,13 @@ function helpEmbed(){
         '/tickets pregunta',
         '/tickets publicar',
         '/tickets panel-list',
+        '/tickets panel-renombrar',
         '/tickets panel-eliminar',
         '/tickets categoria-list',
         '/tickets categoria-eliminar',
         '/tickets pregunta-list',
         '/tickets pregunta-eliminar',
         '/tickets log',
-        '/tickets log-reset',
         '/tickets log-reset'
       ].join('\n')},
       {name:'👋 Bienvenida',value:'/welcome set\n/welcome reset'},
@@ -616,10 +619,38 @@ client.on(Events.MessageCreate,async m=>{
       }
 
       if(!m.member?.permissions?.has(ADMIN)){
-        return m.reply({
-          content:'¡Hola! Usa **@Codek Hub help** o **/help** para ver todo lo que puedo hacer.',
-          allowedMentions:{users:[]}
-        });
+        const guild=m.guild;
+        const roles=[...guild.roles.cache.values()]
+          .filter(r=>r.id!==guild.id)
+          .sort((a,b)=>b.position-a.position)
+          .slice(0,8);
+        const channels=[...guild.channels.cache.values()]
+          .filter(ch=>ch.type===ChannelType.GuildText||ch.type===ChannelType.GuildAnnouncement||ch.type===ChannelType.GuildVoice)
+          .sort((a,b)=>a.rawPosition-b.rawPosition)
+          .slice(0,8);
+        const textChannels=channels.filter(ch=>ch.type===ChannelType.GuildText||ch.type===ChannelType.GuildAnnouncement).length;
+        const voiceChannels=channels.filter(ch=>ch.type===ChannelType.GuildVoice).length;
+
+        const infoEmbed=new EmbedBuilder()
+          .setAuthor({name:'Codek Hub',iconURL:client.user.displayAvatarURL({size:256})})
+          .setTitle(guild.name+' • Codek Hub')
+          .setDescription('¡Hola! Soy **Codek Hub**, el bot de gestión y automatización de este servidor. Usa **@Codek Hub help** para ver mis comandos.')
+          .setColor(0x5865F2)
+          .setThumbnail(guild.iconURL({size:512})||client.user.displayAvatarURL({size:512}))
+          .addFields(
+            {name:'👥 Miembros',value:String(guild.memberCount??guild.members.cache.size),inline:true},
+            {name:'🎭 Roles',value:String(guild.roles.cache.size),inline:true},
+            {name:'📚 Canales',value:String(guild.channels.cache.size),inline:true},
+            {name:'💬 Texto / Voz',value:textChannels+' / '+voiceChannels,inline:true},
+            {name:'🛠️ Funciones',value:'🎫 Tickets\n⭐ Vouches\n👋 Bienvenida\n🤖 Autoresponders\n🧹 Moderación\n🎮 Rich Presence',inline:true},
+            {name:'⚡ Estado',value:'🟢 Online\n🏓 '+Math.max(0,Math.round(client.ws.ping))+' ms',inline:true},
+            {name:'🎭 Roles destacados',value:roles.length?roles.map(r=>'<@&'+r.id+'>').join(' '):'Sin roles disponibles',inline:false},
+            {name:'📢 Canales',value:channels.length?channels.map(ch=>'<#'+ch.id+'>').join(' '):'Sin canales disponibles',inline:false}
+          )
+          .setFooter({text:'@Codek Hub • /help para ver todos los comandos'})
+          .setTimestamp();
+
+        return m.reply({embeds:[infoEmbed]});
       }
 
       const [panelCount,categoryCount,openTickets,vouchConfig,autoCount,presenceConfig]=await Promise.all([
@@ -651,6 +682,9 @@ client.on(Events.MessageCreate,async m=>{
           {name:'Ping',value:Math.round(client.ws.ping)+' ms',inline:true},
           {name:'Base de datos',value:dbOk?'🟢 Operativa':'🔴 Error',inline:true},
           {name:'Servidor',value:m.guild.name,inline:true},
+          {name:'Miembros',value:String(m.guild.memberCount??m.guild.members.cache.size),inline:true},
+          {name:'Roles',value:String(m.guild.roles.cache.size),inline:true},
+          {name:'Canales',value:String(m.guild.channels.cache.size),inline:true},
           {name:'Tickets',value:'Paneles: '+panelCount+'\\nCategorías: '+categoryCount+'\\nAbiertos: '+openTickets,inline:true},
           {name:'Vouch',value:vouchConfig?.enabled?'🟢 Activo':'⚪ Desactivado',inline:true},
           {name:'Autoresponder',value:autoCount+' activos',inline:true},
@@ -664,7 +698,7 @@ client.on(Events.MessageCreate,async m=>{
       return m.reply({embeds:[statusEmbed]});
     }
 
-    const prefixMatch=m.content.trim().match(/^\\?purge(?:\\s+(.+))?$/i);
+    const prefixMatch=m.content.trim().match(/^\?purge(?:\s+(.+))?$/i);
     if(prefixMatch){
       if(!m.member?.permissions?.has(PermissionFlagsBits.ManageMessages)){
         return m.reply('Necesitas el permiso **Gestionar mensajes** para usar ?purge.');
@@ -1216,6 +1250,42 @@ client.on(Events.InteractionCreate,async i=>{
         });
         if(!rows.length)return i.reply(deny('No hay paneles configurados.'));
         return i.reply(deny(rows.map(p=>'• **'+p.name+'** — '+p.categories.length+' categoría(s)').join('\\n')));
+      }
+
+      if(sub==='panel-renombrar'){
+        const name=i.options.getString('nombre').trim();
+        const newName=i.options.getString('nuevo-nombre').trim();
+
+        if(!name||!newName)return i.reply(deny('El nombre actual y el nuevo nombre son obligatorios.'));
+        if(newName.length>100)return i.reply(deny('El nuevo nombre no puede superar 100 caracteres.'));
+        if(name.toLowerCase()===newName.toLowerCase()){
+          return i.reply(deny('El nuevo nombre debe ser diferente al actual.'));
+        }
+
+        const found=await findUniquePanel(i.guildId,name);
+        if(found.multiple)return i.reply(deny('Hay varios paneles con ese nombre. Usa nombres únicos de panel.'));
+        if(!found.row)return i.reply(deny('Panel no encontrado.'));
+
+        const conflict=await prisma.ticketPanel.findMany({
+          where:{guildId:i.guildId,name:{equals:newName,mode:'insensitive'}},
+          select:{id:true}
+        });
+        if(conflict.some(x=>x.id!==found.row.id)){
+          return i.reply(deny('Ya existe otro panel con ese nombre.'));
+        }
+
+        try{
+          await prisma.ticketPanel.update({
+            where:{id:found.row.id},
+            data:{name:newName}
+          });
+        }catch(e){
+          if(e?.code==='P2002')return i.reply(deny('Ya existe otro panel con ese nombre.'));
+          throw e;
+        }
+
+        await audit(i.guildId,i.user.id,'tickets','panel_renamed',name+' -> '+newName);
+        return i.reply(deny('Panel renombrado: **'+name+'** → **'+newName+'**.'));
       }
 
       if(sub==='panel-eliminar'){
