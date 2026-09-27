@@ -1527,7 +1527,28 @@ client.on(Events.InteractionCreate,async i=>{
   }
 });
 
+let shuttingDown=false;
+
+async function shutdown(signal,exitCode=0){
+  if(shuttingDown)return;
+  shuttingDown=true;
+  logger.info('Shutting down Codek Hub',{signal});
+  try{client.destroy();}catch(e){logger.warn('Discord shutdown failed',{error:e.message});}
+  try{await prisma.$disconnect();}catch(e){logger.warn('Database shutdown failed',{error:e.message});}
+  process.exit(exitCode);
+}
+
+process.on('SIGINT',()=>{void shutdown('SIGINT',0);});
+process.on('SIGTERM',()=>{void shutdown('SIGTERM',0);});
+process.on('unhandledRejection',reason=>{
+  logger.error('Unhandled promise rejection',{error:String(reason?.stack||reason)});
+});
+process.on('uncaughtException',error=>{
+  logger.error('Uncaught exception',{error:error.stack||error.message});
+  void shutdown('uncaughtException',1);
+});
+
 client.login(env.DISCORD_TOKEN).catch(e=>{
   logger.error('Discord login failed',{error:e.message});
-  process.exit(1);
+  void shutdown('login_failed',1);
 });
