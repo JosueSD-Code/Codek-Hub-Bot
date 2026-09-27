@@ -63,6 +63,8 @@ const commands=[
     .addSubcommand(s=>s.setName('panel-eliminar').setDescription('Elimina un panel y su configuración.')
       .addStringOption(o=>o.setName('nombre').setDescription('Nombre del panel').setRequired(true))
       .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true)))
+    .addSubcommand(s=>s.setName('panel-reset').setDescription('Elimina TODOS los paneles y su configuración.')
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma el reinicio total').setRequired(true)))
     .addSubcommand(s=>s.setName('categoria-list').setDescription('Lista categorías de un panel.')
       .addStringOption(o=>o.setName('panel').setDescription('Nombre del panel').setRequired(true)))
     .addSubcommand(s=>s.setName('categoria-eliminar').setDescription('Elimina una categoría y su configuración.')
@@ -195,8 +197,9 @@ const context=(u,g,ch,extra={})=>{
 
 function helpEmbed(){
   return new EmbedBuilder()
-    .setTitle('Codek Hub • Ayuda')
-    .setDescription('Guía rápida de las funciones y comandos disponibles.')
+    .setAuthor({name:'Codek Hub',iconURL:client.user?.displayAvatarURL({size:128})})
+    .setTitle('✨ Codek Hub • Centro de ayuda')
+    .setDescription('Todo lo que puedo hacer en este servidor, organizado en un solo lugar.')
     .setColor(0x5865F2)
     .addFields(
       {name:'🎫 Tickets',value:[
@@ -207,6 +210,8 @@ function helpEmbed(){
         '/tickets panel-list',
         '/tickets panel-renombrar',
         '/tickets panel-eliminar',
+        '/tickets panel-reset',
+        '⚠️ panel-reset elimina toda la configuración de paneles.',
         '/tickets categoria-list',
         '/tickets categoria-eliminar',
         '/tickets pregunta-list',
@@ -460,7 +465,7 @@ async function createTicket(i,cat,answers=[]){
       category:cat.name,
       staff:supportRoleIds.map(x=>'<@&'+x+'>').join(' '),
     });
-    const a=answers.length?'\\n\\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\\n'):'';
+    const a=answers.length?'\\n\\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
 
     const ticketEmbed=new EmbedBuilder()
       .setTitle(clip(renderVariables('Ticket • '+cat.name,ticketContext),256))
@@ -1250,6 +1255,37 @@ client.on(Events.InteractionCreate,async i=>{
         });
         if(!rows.length)return i.reply(deny('No hay paneles configurados.'));
         return i.reply(deny(rows.map(p=>'• **'+p.name+'** — '+p.categories.length+' categoría(s)').join('\\n')));
+      }
+
+      if(sub==='panel-reset'){
+        if(!i.options.getBoolean('confirmar')){
+          return i.reply(deny('Debes confirmar el reinicio con **confirmar: true**.'));
+        }
+
+        const panels=await prisma.ticketPanel.findMany({
+          where:{guildId:i.guildId},
+          select:{id:true,name:true}
+        });
+        if(!panels.length)return i.reply(deny('No hay paneles configurados para reiniciar.'));
+
+        await i.deferReply({flags:64});
+        let ticketsClosed=0;
+        for(const panel of panels){
+          const categories=await prisma.ticketCategory.findMany({
+            where:{panelId:panel.id},
+            select:{id:true}
+          });
+          for(const category of categories){
+            ticketsClosed+=await deleteOpenTicketsForCategory(i.guildId,category.id);
+          }
+        }
+
+        await prisma.ticketPanel.deleteMany({where:{guildId:i.guildId}});
+        await audit(i.guildId,i.user.id,'tickets','panel_reset','Reset total de '+panels.length+' panel(es).');
+
+        return i.editReply(deny(
+          '🧹 Configuración de tickets reiniciada. Se eliminaron **'+panels.length+' panel(es)** y se cerraron/eliminaron los canales de **'+ticketsClosed+' ticket(s) abierto(s)**.'
+        ));
       }
 
       if(sub==='panel-renombrar'){
