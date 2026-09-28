@@ -1,4 +1,4 @@
-import { prisma } from '../../../packages/shared/src/index.js';
+import { prisma } from '../../../../packages/shared/src/index.js';
 
 export async function serverStats(guild){
   const channels=[...guild.channels.cache.values()];
