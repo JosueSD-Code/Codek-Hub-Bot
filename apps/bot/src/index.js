@@ -1891,6 +1891,9 @@ client.on(Events.ChannelCreate,async channel=>{
 client.on(Events.ChannelDelete,async channel=>{
   if(channel.guild)await logToChannel(channel.guild,'🗑️ Canal eliminado','Nombre: '+channel.name+'\nID: '+channel.id);
 });
+client.on(Events.ChannelUpdate,async(oldChannel,newChannel)=>{
+  if(newChannel.guild)await logToChannel(newChannel.guild,'✏️ Canal actualizado','Canal: '+newChannel.toString()+'\nNombre anterior: '+oldChannel.name+'\nNombre nuevo: '+newChannel.name);
+});
 
 client.on(Events.RoleCreate,async role=>{
   await logToChannel(role.guild,'🎭 Rol creado','Rol: '+role.toString()+'\nID: '+role.id);
