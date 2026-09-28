@@ -25,17 +25,18 @@ export async function processAutoMod(message){
   if(!message.guild||message.author?.bot)return null;
   const rules=await prisma.autoModRule.findMany({where:{guildId:message.guild.id,enabled:true}});
   const member=message.member;
-  const exempt=rules.some(rule=>(rule.exceptions||[]).some(id=>member?.roles?.cache?.has(id)));
-  if(exempt)return null;
 
   const now=Date.now();
   const key=message.guild.id+':'+message.author.id;
   const recent=(spamState.get(key)||[]).filter(ts=>now-ts<10000);
   recent.push(now);
   spamState.set(key,recent);
-  const matched=rules.find(rule=>rule.type==='spam'
-    ?recent.length>=Number(rule.threshold||5)
-    :matchesRule(message,rule));
+  const matched=rules.find(rule=>{
+    if((rule.exceptions||[]).some(id=>member?.roles?.cache?.has(id)))return false;
+    return rule.type==='spam'
+      ?recent.length>=Number(rule.threshold||5)
+      :matchesRule(message,rule);
+  });
   if(!matched)return null;
 
   const action=actionOf(matched);
