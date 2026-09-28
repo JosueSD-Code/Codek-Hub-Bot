@@ -15,10 +15,9 @@ function color(level){
 
 export async function sendConsoleLog(level,message,metadata={}){
   if(!client||forwarding)return;
-  const channelId=await getChannelId().catch(()=>null);
-  if(!channelId)return;
-  const channel=await client.channels.fetch(channelId).catch(()=>null);
-  if(!channel?.isTextBased())return;
+  const resolved=await getChannelId().catch(()=>null);
+  const channelIds=Array.isArray(resolved)?resolved:[resolved].filter(Boolean);
+  if(!channelIds.length)return;
   const body=String(message??'').slice(0,3900);
   const embed=new EmbedBuilder()
     .setTitle('📝 Console Log • '+String(level).toUpperCase())
@@ -29,5 +28,5 @@ export async function sendConsoleLog(level,message,metadata={}){
     embed.addFields({name:'Metadata',value:'```json\n'+JSON.stringify(metadata,null,2).slice(0,900)+'\n```'});
   }
   forwarding=true;
-  try{await channel.send({embeds:[embed]})}finally{forwarding=false}
+  try{for(const channelId of channelIds){const channel=await client.channels.fetch(channelId).catch(()=>null);if(channel?.isTextBased())await channel.send({embeds:[embed]}).catch(()=>{})}}finally{forwarding=false}
 }
