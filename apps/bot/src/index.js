@@ -1581,8 +1581,7 @@ client.on(Events.InteractionCreate,async i=>{
   }catch(e){
     logger.error('Interaction error',{error:e.message,stack:e.stack});
     if(!i.replied&&!i.deferred){
-      await i.replyconst originalConsole={log:console.log,warn:console.warn,error:console.error};
-'Usuario: '+ban.user.toString()+'\nID: '+ban.user.id);
+      await i.reply'Usuario: '+ban.user.toString()+'\nID: '+ban.user.id);
 });
 
 let shuttingDown=false;
@@ -1606,7 +1605,7 @@ process.on('uncaughtException',error=>{
   void shutdown('uncaughtException',1);
 });
 
-client.once(Events.ClientReady,()=>{registerRuntimeEvents(client,{prisma,processAutoMod,endGiveaway,logToChannel,renderVariables,context,clip,configureDiscordLogger,sendConsoleLog});void processDueGiveaways()});
+client.once(Events.ClientReady,()=>{registerRuntimeEvents(client,{prisma,processAutoMod,endGiveaway,logToChannel,renderVariables,context,clip,configureDiscordLogger,sendConsoleLog})});
 
 client.login(env.DISCORD_TOKEN).catch(e=>{
   logger.error('Discord login failed',{error:e.message});
