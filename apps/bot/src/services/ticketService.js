@@ -127,13 +127,13 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
     return '<!doctype html><html><head><meta charset="utf-8"><title>Ticket #'+esc(t.number)+'</title></head><body><h1>Ticket #'+esc(t.number)+'</h1><p>Usuario: '+esc(t.user?.tag||t.user?.username||'Usuario')+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+answers+xs.map(m=>{const attachments=[...m.attachments.values()].map(a=>a.url);const content=esc(m.content||'[sin texto]');const files=attachments.length?'<br>Archivos: '+attachments.map(esc).join(' | '):'';return '<p><b>'+esc(m.author?.tag||m.author?.username||'Usuario')+'</b> '+esc(new Date(m.createdTimestamp).toISOString())+'<br>'+content+files+'</p>'}).join('')+'</body></html>';
   }
 
-  async function closeTicket(i,t){
+  async function closeTicket(i,t,reason=null){
     if(closeLocks.has(t.id))return i.reply(deny('El cierre ya está en proceso.'));
     closeLocks.add(t.id);
     if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
     try{
       const html=await transcript(i.channel,t);const closedAt=new Date();
-      const updated=await prisma.ticket.updateMany({where:{id:t.id,status:'open'},data:{status:'closed',closedAt}});
+      const updated=await prisma.ticket.updateMany({where:{id:t.id,status:'open'},data:{status:'closed',closedAt,closedReason:reason}});
       if(!updated.count)return i.editReply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
       await prisma.ticketTranscript.upsert({where:{ticketId:t.id},update:{html},create:{ticketId:t.id,html}});
       await prisma.ticketStats.create({data:{guildId:i.guildId,userId:t.userId,staffId:i.user.id,categoryId:t.categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-t.createdAt.getTime())/1000))}});
