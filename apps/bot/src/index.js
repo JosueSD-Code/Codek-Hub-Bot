@@ -25,6 +25,15 @@ const closeLocks=new Set();
 import { ADMIN,isAdmin,deny,roleIdsByName } from './utils/permissions.js';
 import { clip,safeUrl,isHexColor,requiredText } from './utils/validation.js';
 import { color } from './utils/embeds.js';
+import { applyCooldown } from './middleware/rateLimit.js';
+import { checkBotPermissions } from './middleware/botPermissions.js';
+import { handleDiscordError } from './middleware/validation.js';
+import { recordModeration, history as moderationHistory, parseDuration } from './services/moderationService.js';
+import { processAutoMod } from './services/automodService.js';
+import { serverStats, botStats } from './services/statsService.js';
+import { findTicket, claim as claimTicket, release as releaseTicket, addUser as addTicketUser, removeUser as removeTicketUser, rename as renameTicket, move as moveTicket, stats as ticketStats } from './services/ticketService.js';
+import { create as createGiveaway, toggleParticipant, end as endGiveaway, cancel as cancelGiveaway } from './services/giveawayService.js';
+import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
 
 const commands=[
   new SlashCommandBuilder()
@@ -89,7 +98,9 @@ const commands=[
       .addStringOption(o=>o.setName('imagen').setDescription('URL imagen'))
       .addStringOption(o=>o.setName('thumbnail').setDescription('URL thumbnail'))
       .addStringOption(o=>o.setName('footer').setDescription('Footer')))
-    .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.')),
+    .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.'))
+    .addSubcommand(s=>s.setName('test').setDescription('Prueba la bienvenida.'))
+    .addSubcommand(s=>s.setName('preview').setDescription('Previsualiza la bienvenida.')),
 
   new SlashCommandBuilder()
     .setName('vouch-config').setDescription('Configura vouches.')
@@ -143,8 +154,87 @@ const commands=[
     .addIntegerOption(o=>o.setName('cantidad').setDescription('Cantidad de mensajes a eliminar').setMinValue(1).setMaxValue(10000))
     .addBooleanOption(o=>o.setName('canal').setDescription('Elimina todo el historial del canal actual')),
   new SlashCommandBuilder().setName('help').setDescription('Muestra la ayuda completa de Codek Hub.'),
-  new SlashCommandBuilder().setName('variables').setDescription('Muestra variables.')
-];
+  new SlashCommandBuilder().setName('variables').setDescription('Muestra variables.'),
+  new SlashCommandBuilder().setName('warn').setDescription('Advierte a un usuario.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true))
+    .addStringOption(o=>o.setName('razon').setDescription('Razón')),
+  new SlashCommandBuilder().setName('mute').setDescription('Aplica timeout a un usuario.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true))
+    .addStringOption(o=>o.setName('duracion').setDescription('Ejemplo: 1h, 30m, 1d').setRequired(true))
+    .addStringOption(o=>o.setName('razon').setDescription('Razón')),
+  new SlashCommandBuilder().setName('unmute').setDescription('Quita el timeout.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)),
+  new SlashCommandBuilder().setName('kick').setDescription('Expulsa a un usuario.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true))
+    .addStringOption(o=>o.setName('razon').setDescription('Razón')),
+  new SlashCommandBuilder().setName('ban').setDescription('Banea a un usuario.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true))
+    .addStringOption(o=>o.setName('razon').setDescription('Razón')),
+  new SlashCommandBuilder().setName('unban').setDescription('Desbanea por ID.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addStringOption(o=>o.setName('usuario').setDescription('ID del usuario').setRequired(true)),
+  new SlashCommandBuilder().setName('timeout').setDescription('Aplica timeout.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true))
+    .addStringOption(o=>o.setName('duracion').setDescription('Ejemplo: 1h, 30m, 1d').setRequired(true))
+    .addStringOption(o=>o.setName('razon').setDescription('Razón')),
+  new SlashCommandBuilder().setName('untimeout').setDescription('Quita timeout.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)),
+  new SlashCommandBuilder().setName('history').setDescription('Historial de moderación.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)),
+  new SlashCommandBuilder().setName('clear').setDescription('Elimina mensajes.')
+    .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
+    .addIntegerOption(o=>o.setName('cantidad').setDescription('Cantidad 1-10000').setMinValue(1).setMaxValue(10000).setRequired(true)),
+  new SlashCommandBuilder().setName('logs').setDescription('Configura los logs.')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s=>s.setName('set').setDescription('Configura el canal de logs.')
+      .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true)))
+    .addSubcommand(s=>s.setName('disable').setDescription('Desactiva los logs.'))
+    .addSubcommand(s=>s.setName('status').setDescription('Muestra la configuración.')),
+  new SlashCommandBuilder().setName('automod').setDescription('Configura AutoMod.')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s=>s.setName('setup').setDescription('Muestra reglas AutoMod.'))
+    .addSubcommand(s=>s.setName('spam').setDescription('Configura anti-spam.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addIntegerOption(o=>o.setName('limit').setMinValue(2).setMaxValue(20).setRequired(true))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'}))),
+  new SlashCommandBuilder().setName('giveaway').setDescription('Gestiona sorteos.')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s=>s.setName('create').setDescription('Crea un sorteo.')
+      .addStringOption(o=>o.setName('duracion').setDescription('Ejemplo: 10m, 2h, 1d').setRequired(true))
+      .addIntegerOption(o=>o.setName('ganadores').setDescription('Ganadores').setMinValue(1).setMaxValue(20).setRequired(true))
+      .addStringOption(o=>o.setName('premio').setDescription('Premio').setMaxLength(256).setRequired(true)))
+    .addSubcommand(s=>s.setName('end').setDescription('Finaliza un sorteo.')
+      .addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
+    .addSubcommand(s=>s.setName('reroll').setDescription('Selecciona nuevos ganadores.')
+      .addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
+    .addSubcommand(s=>s.setName('cancel').setDescription('Cancela un sorteo.')
+      .addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
+    .addSubcommand(s=>s.setName('list').setDescription('Lista sorteos activos.')),
+  new SlashCommandBuilder().setName('stats').setDescription('Muestra estadísticas.')
+    .addSubcommand(s=>s.setName('server').setDescription('Estadísticas del servidor.'))
+    .addSubcommand(s=>s.setName('bot').setDescription('Estadísticas de Codek Hub.')),
+  new SlashCommandBuilder().setName('config').setDescription('Configuración central.')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s=>s.setName('status').setDescription('Estado de todos los módulos.'))
+    .addSubcommand(s=>s.setName('tickets').setDescription('Estado de tickets.'))
+    .addSubcommand(s=>s.setName('welcome').setDescription('Estado de bienvenida.'))
+    .addSubcommand(s=>s.setName('logs').setDescription('Estado de logs.'))
+    .addSubcommand(s=>s.setName('automod').setDescription('Estado de AutoMod.'))
+    .addSubcommand(s=>s.setName('vouches').setDescription('Estado de vouches.')),
+  new SlashCommandBuilder().setName('health').setDescription('Estado de salud del bot.'),
+  new SlashCommandBuilder().setName('backup').setDescription('Backups de configuración.')
+    .setDefaultMemberPermissions(ADMIN)
+    .addSubcommand(s=>s.setName('create').setDescription('Crea un backup.'))
+    .addSubcommand(s=>s.setName('list').setDescription('Lista backups.'))
+  ];
 
 const roleIds=(g,v)=>roleIdsByName(g,v);
 const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
