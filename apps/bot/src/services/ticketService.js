@@ -1,5 +1,5 @@
 import { ChannelType } from 'discord.js';
-import { prisma } from '../../../packages/shared/src/index.js';
+import { prisma } from '../../../../packages/shared/src/index.js';
 
 export async function findTicket(guildId,identifier){
   const value=String(identifier??'').trim();
