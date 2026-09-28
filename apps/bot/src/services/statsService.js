@@ -1,6 +1,7 @@
 import { prisma } from '../../../../packages/shared/src/index.js';
 
 export async function serverStats(guild){
+  if(guild.memberCount&&guild.members.cache.size<guild.memberCount)await guild.members.fetch().catch(()=>null);
   const channels=[...guild.channels.cache.values()];
   const roles=[...guild.roles.cache.values()];
   return {
