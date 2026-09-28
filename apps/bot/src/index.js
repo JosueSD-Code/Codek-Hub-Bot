@@ -917,6 +917,7 @@ client.on(Events.InteractionCreate,async i=>{
     if(i.isChatInputCommand()&&i.commandName!=='help'){
       try{applyCooldown(i.user.id,i.commandName,2)}catch(e){return i.reply(deny(e.message))}
     }
+    if(i.isChatInputCommand())void audit(i.guildId,i.user.id,'command',i.commandName).catch(()=>{});
 
     if(i.isStringSelectMenu()&&i.customId.startsWith('ticket:select:')){
       const categoryId=i.values[0];
