@@ -1,10 +1,11 @@
 import { applyCooldown } from '../middleware/rateLimit.js';
 import { checkBotPermissions } from '../middleware/botPermissions.js';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import path from 'node:path';
 import { Events, PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
+  const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
   function formatUptime(seconds){const total=Math.max(0,Math.floor(Number(seconds)||0));const d=Math.floor(total/86400);const h=Math.floor(total%86400/3600);const m=Math.floor(total%3600/60);const s=total%60;return (d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')}
 
   const {
@@ -605,9 +606,12 @@ export function registerInteractionHandler(client,deps){
       const sub=i.options.getSubcommand();
       const staffSubs=new Set(['reclamar','liberar','adduser','removeuser','cerrar','reabrir','renombrar','mover','prioridad','stats','transcript']);
       if(staffSubs.has(sub)){
-        if(sub==='stats'){const st=await ticketStats(i.guildId);return i.reply(deny('🎫 Estadísticas\nAbiertos: '+st.open+'\nCerrados: '+st.closed+'\nReclamos: '+st.claims+'\nCategorías: '+st.categories.length))}
+        if(sub==='stats'){if(!isAdmin(i)&&!i.member?.roles?.cache?.some(role=>role.permissions?.has?.(PermissionFlagsBits.ManageChannels)))return i.reply(deny('Solo el staff puede consultar estas estadísticas.'));const st=await ticketStats(i.guildId);return i.reply(deny('🎫 Estadísticas\nAbiertos: '+st.open+'\nCerrados: '+st.closed+'\nReclamos: '+st.claims+'\nCategorías: '+st.categories.length))}
         const ticket=await findTicket(i.guildId,i.options.getString('ticket'));
         if(!ticket)return i.reply(deny('Ticket no encontrado.'));
+        const member=i.member;
+        const isSupport=Boolean(member?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>member.roles.cache.has(x));
+        if(sub==='reclamar'&&!isSupport&&!isAdmin(i))return i.reply(deny('Solo soporte puede reclamar tickets.'));
         if(sub==='reclamar'){const result=await claimTicket(ticket,i.user.id);await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:ticket.userId,categoryId:ticket.categoryId,action:'claimed'}});await audit(i.guildId,i.user.id,'tickets','claimed','ticket:'+ticket.id);return i.reply(deny(result.message))}
         if(sub==='liberar'){if(ticket.claimedById&&ticket.claimedById!==i.user.id&&!isAdmin(i))return i.reply(deny('Solo quien reclamó el ticket o un administrador puede liberarlo.'));await releaseTicket(ticket);return i.reply(deny('Ticket liberado.'))}
         const member=i.member;const isSupport=Boolean(member?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>member.roles.cache.has(x));
@@ -617,15 +621,15 @@ export function registerInteractionHandler(client,deps){
         const channel=i.guild.channels.cache.get(ticket.channelId);
         if(sub==='adduser'){if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));await addTicketUser(channel,i.options.getUser('usuario').id);return i.reply(deny('Usuario añadido al ticket.'))}
         if(sub==='removeuser'){if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));const user=i.options.getUser('usuario');if(user.id===ticket.userId)return i.reply(deny('No puedes quitar al creador del ticket.'));await removeTicketUser(channel,user.id);return i.reply(deny('Usuario quitado del ticket.'))}
-        if(sub==='cerrar'){if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar el cierre con confirmar: true.'));const reason=i.options.getString('razon')?.trim()||null;await closeTicket(i,ticket);await prisma.ticket.update({where:{id:ticket.id},data:{closedReason:reason}});return}
+        if(sub==='cerrar'){if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar el cierre con confirmar: true.'));const reason=i.options.getString('razon')?.trim()||null;return closeTicket(i,ticket,reason)}
         if(sub==='reabrir'){
           const supportRoleIds=ticket.category.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
           if(!supportRoleIds.length)return i.reply(deny('La categoría ya no tiene roles de soporte válidos.'));
           const reopened=await i.guild.channels.create({name:clip(clean(ticket.category.name)+'-'+ticket.number,95),type:ChannelType.GuildText,parent:ticket.category.discordCategoryId&&i.guild.channels.cache.has(ticket.category.discordCategoryId)?ticket.category.discordCategoryId:undefined,permissionOverwrites:[{id:i.guild.roles.everyone.id,deny:['ViewChannel']},{id:ticket.userId,allow:['ViewChannel','SendMessages','ReadMessageHistory']},...supportRoleIds.map(id=>({id,allow:['ViewChannel','SendMessages','ReadMessageHistory']}))]});
-          await prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null}});
+          await prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null,claimedAt:null}});
           await prisma.ticketStats.create({data:{guildId:i.guildId,userId:ticket.userId,categoryId:ticket.categoryId,action:'reopened'}});
           await audit(i.guildId,i.user.id,'tickets','reopened','#'+ticket.number);
-          await reopened.send({embeds:[new EmbedBuilder().setTitle('🔓 Ticket reabierto').setDescription('Ticket reabierto por '+i.user.toString()+'.').setColor(0x57F287)]});
+          await reopened.send({embeds:[new EmbedBuilder().setTitle('🔓 Ticket reabierto').setDescription('Ticket reabierto por '+i.user.toString()+'.').setColor(0x57F287)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ticket:claim:'+ticket.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('ticket:close:'+ticket.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger))]});
           return i.reply(deny('Ticket reabierto en '+reopened.toString()+'.'));
         }
         if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));
