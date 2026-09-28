@@ -127,7 +127,9 @@ const commands=[
       .addStringOption(o=>o.setName('color').setDescription('Color HEX'))
       .addStringOption(o=>o.setName('imagen').setDescription('URL imagen'))
       .addStringOption(o=>o.setName('thumbnail').setDescription('URL thumbnail'))
-      .addStringOption(o=>o.setName('footer').setDescription('Footer')))
+      .addStringOption(o=>o.setName('footer').setDescription('Footer'))
+      .addChannelOption(o=>o.setName('canal-despedida').setDescription('Canal de despedidas').addChannelTypes(ChannelType.GuildText))
+      .addStringOption(o=>o.setName('despedida').setDescription('Mensaje de despedida')))
     .addSubcommand(s=>s.setName('reset').setDescription('Elimina la configuración de bienvenida.'))
     .addSubcommand(s=>s.setName('test').setDescription('Prueba la bienvenida.'))
     .addSubcommand(s=>s.setName('preview').setDescription('Previsualiza la bienvenida.')),
@@ -1223,7 +1225,10 @@ client.on(Events.InteractionCreate,async i=>{
         color:rawColor,
         image,
         thumbnail,
-        footer:i.options.getString('footer')
+        footer:i.options.getString('footer'),
+        goodbyeEnabled:Boolean(i.options.getString('despedida')),
+        goodbyeChannelId:i.options.getChannel('canal-despedida')?.id||null,
+        goodbyeMessage:i.options.getString('despedida')||null
       };
 
       await prisma.welcomeConfig.upsert({
@@ -1877,6 +1882,11 @@ client.on(Events.GuildMemberAdd,async member=>{
 
 client.on(Events.GuildMemberRemove,async member=>{
   await logToChannel(member.guild,'📤 Usuario salió','Usuario: '+member.user?.toString()+'\nID: '+member.id);
+  const config=await prisma.welcomeConfig.findUnique({where:{guildId:member.guild.id}}).catch(()=>null);
+  if(config?.enabled&&config.goodbyeEnabled&&config.goodbyeMessage){
+    const channel=config.goodbyeChannelId?member.guild.channels.cache.get(config.goodbyeChannelId):null;
+    if(channel?.isTextBased())await channel.send({content:renderVariables(config.goodbyeMessage,context(member.user,member.guild,channel))}).catch(()=>{});
+  }
 });
 
 client.on(Events.GuildMemberUpdate,async(oldMember,newMember)=>{
