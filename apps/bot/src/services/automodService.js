@@ -9,8 +9,8 @@ function actionOf(rule){
 function matchesRule(message,rule){
   const text=String(message.content??'');
   const lower=text.toLowerCase();
-  if(rule.type==='links')return /https?:\\/\\/|www\\./i.test(text)&&!(rule.whitelist||[]).some(x=>lower.includes(String(x).toLowerCase()));
-  if(rule.type==='invites')return /discord(?:app)?\\.com\\/invite\\/|discord\\.gg\\//i.test(text);
+  if(rule.type==='links')return /https?:\/\/|www\./i.test(text)&&!(rule.whitelist||[]).some(x=>lower.includes(String(x).toLowerCase()));
+  if(rule.type==='invites')return /discord(?:app)?\.com\/invite\/|discord\.gg\//i.test(text);
   if(rule.type==='words')return (rule.whitelist||[]).some(word=>lower.includes(String(word).toLowerCase()));
   if(rule.type==='mentions')return message.mentions.users.size>=Number(rule.threshold||5);
   if(rule.type==='caps'){
