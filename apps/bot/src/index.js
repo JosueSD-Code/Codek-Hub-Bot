@@ -913,6 +913,9 @@ client.on(Events.InteractionCreate,async i=>{
       if(!i.replied&&!i.deferred)await i.reply(deny('Este comando solo puede usarse dentro de un servidor.'));
       return;
     }
+    if(i.isChatInputCommand()&&i.commandName!=='help'){
+      try{applyCooldown(i.user.id,i.commandName,2)}catch(e){return i.reply(deny(e.message))}
+    }
 
     if(i.isStringSelectMenu()&&i.customId.startsWith('ticket:select:')){
       const categoryId=i.values[0];
