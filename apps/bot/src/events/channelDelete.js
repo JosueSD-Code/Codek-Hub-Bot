@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.ChannelDelete,async channel=>{if(channel.guild)await logToChannel(channel.guild,'🗑️ Canal eliminado','Nombre: '+channel.name+'\nID: '+channel.id,'CHANNEL_DELETE')})}
