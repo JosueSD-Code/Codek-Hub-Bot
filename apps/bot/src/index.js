@@ -38,6 +38,7 @@ import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
 import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { registerInteractionHandler } from './handlers/interactionHandler.js';
+import { createLogService } from './services/logService.js';
 
 import { commands } from './commands.js';
 
@@ -124,17 +125,7 @@ function helpEmbed(){
     .setTimestamp();
 }
 
-async function logToChannel(g,title,description){
-  try{
-    const x=await prisma.guild.findUnique({where:{id:g.id},select:{logChannelId:true}});
-    const ch=x?.logChannelId?g.channels.cache.get(x.logChannelId):null;
-    if(ch?.isTextBased()){
-      await ch.send({embeds:[new EmbedBuilder().setTitle(title).setDescription(description).setColor(0x5865F2).setTimestamp()]});
-    }
-  }catch(e){
-    logger.warn('Log failed',{error:e.message});
-  }
-}
+const {logToChannel}=createLogService(prisma,logger);
 
 async function presence(){
   const p=await prisma.presenceConfig.findFirst({
