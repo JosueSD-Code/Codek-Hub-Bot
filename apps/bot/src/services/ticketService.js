@@ -4,10 +4,13 @@ import { prisma } from '../../../../packages/shared/src/index.js';
 export async function findTicket(guildId,identifier){
   const value=String(identifier??'').trim();
   if(!value)return null;
-  return prisma.ticket.findFirst({
-    where:{guildId,OR:[{id:value},{channelId:value},{number:Number.isInteger(Number(value))?Number(value):-1}]},
-    include:{category:true,transcript:true}
-  });
+  const exact=await prisma.ticket.findMany({where:{guildId,OR:[{id:value},{channelId:value}]},include:{category:true,transcript:true}});
+  if(exact.length===1)return exact[0];
+  if(exact.length>1)throw new Error('TICKET_AMBIGUOUS');
+  if(!/^\\d+$/.test(value))return null;
+  const rows=await prisma.ticket.findMany({where:{guildId,number:Number(value)},include:{category:true,transcript:true},take:2});
+  if(rows.length>1)throw new Error('TICKET_AMBIGUOUS');
+  return rows[0]??null;
 }
 
 export async function claim(ticket,userId){
@@ -18,7 +21,7 @@ export async function claim(ticket,userId){
 }
 
 export async function release(ticket){
-  await prisma.ticket.update({where:{id:ticket.id},data:{claimedById:null}});
+  await prisma.ticket.update({where:{id:ticket.id},data:{claimedById:null,claimedAt:null}});
   return {message:'Ticket liberado correctamente.'};
 }
 
