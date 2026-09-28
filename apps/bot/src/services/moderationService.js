@@ -1,4 +1,4 @@
-import { prisma } from '../../../packages/shared/src/index.js';
+import { prisma } from '../../../../packages/shared/src/index.js';
 
 export async function recordModeration({guildId,targetId,moderatorId,action,reason=null,duration=null,expiresAt=null}){
   return prisma.moderationAction.create({data:{guildId,targetId,moderatorId,action,reason,duration,expiresAt}});
