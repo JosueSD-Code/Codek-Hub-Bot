@@ -40,7 +40,7 @@ export async function stats(guildId){
   return {open,closed,claims,categories};
 }
 
-export function createTicketRuntime({client,logger,audit,renderVariables,context,clip,deny}){
+export function createTicketRuntime({client,logger,audit,renderVariables,context,clip,deny,logToChannel}){
   const locks=new Set();
   const closeLocks=new Set();
   const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
