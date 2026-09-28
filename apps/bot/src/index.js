@@ -1386,6 +1386,29 @@ client.on(Events.InteractionCreate,async i=>{
       return i.reply(deny('Rich Presence actualizada.'));
     }
 
+    if(i.commandName==='warn'||i.commandName==='mute'||i.commandName==='timeout'||i.commandName==='unmute'||i.commandName==='untimeout'||i.commandName==='kick'||i.commandName==='ban'||i.commandName==='unban'||i.commandName==='history'||i.commandName==='clear'){
+      const permissions={warn:PermissionFlagsBits.ModerateMembers,mute:PermissionFlagsBits.ModerateMembers,timeout:PermissionFlagsBits.ModerateMembers,unmute:PermissionFlagsBits.ModerateMembers,untimeout:PermissionFlagsBits.ModerateMembers,kick:PermissionFlagsBits.KickMembers,ban:PermissionFlagsBits.BanMembers,unban:PermissionFlagsBits.BanMembers,history:PermissionFlagsBits.ModerateMembers,clear:PermissionFlagsBits.ManageMessages};
+      await checkBotPermissions(i,[permissions[i.commandName]]);
+      if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.reply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
+      if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});return i.reply(deny('Usuario desbaneado.'))}
+      const target=i.options.getUser('usuario');
+      if(i.commandName==='history'){const rows=await moderationHistory(i.guildId,target.id,20);if(!rows.length)return i.reply(deny('No hay historial de moderación para ese usuario.'));return i.reply(deny(rows.map(x=>'• **'+x.action+'** — '+(x.reason||'Sin razón')+' — <t:'+Math.floor(x.createdAt.getTime()/1000)+':R>').join('\n')))}
+      const member=await i.guild.members.fetch(target.id).catch(()=>null);if(!member)return i.reply(deny('El usuario no pertenece al servidor.'));
+      const reason=i.options.getString('razon')?.trim()||'Sin razón especificada';
+      if(i.commandName==='warn'){await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'warn',reason});await target.send('⚠️ Has recibido una advertencia en **'+i.guild.name+'**. Razón: '+reason).catch(()=>{});return i.reply(deny('Advertencia registrada para '+target.toString()+'.'))}
+      if(i.commandName==='kick'){await member.kick(reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'kick',reason});return i.reply(deny('Usuario expulsado.'))}
+      if(i.commandName==='ban'){await member.ban({reason});await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'ban',reason});return i.reply(deny('Usuario baneado.'))}
+      if(i.commandName==='unmute'||i.commandName==='untimeout'){await member.timeout(null,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'untimeout',reason});return i.reply(deny('Timeout retirado.'))}
+      const parsed=parseDuration(i.options.getString('duracion'));if(!parsed)return i.reply(deny('Duración inválida. Usa 30m, 1h, 1d o 1w.'));if(parsed.ms>28*86400000)return i.reply(deny('Discord permite un máximo de 28 días de timeout.'));
+      await member.timeout(parsed.ms,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'timeout',reason,duration:parsed.seconds,expiresAt:new Date(Date.now()+parsed.ms)});return i.reply(deny('Timeout aplicado a '+target.toString()+'.'));
+    }
+
+    if(i.commandName==='logs'){
+      const sub=i.options.getSubcommand();
+      if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','CHANNEL_CREATE','CHANNEL_DELETE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
+      if(sub==='disable'){await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});await prisma.logConfig.deleteMany({where:{guildId:i.guildId}});return i.reply(deny('📋 Logs desactivados.'))}
+      const row=await prisma.logConfig.findUnique({where:{guildId:i.guildId}});return i.reply(deny(row?'📋 Logs activos en <#'+row.channelId+'>.':'📋 Logs desactivados.'));
+    }
     if(i.commandName==='tickets'){
       const sub=i.options.getSubcommand();
       const staffSubs=new Set(['reclamar','liberar','adduser','removeuser','cerrar','reabrir','renombrar','mover','prioridad','stats','transcript']);
