@@ -539,7 +539,7 @@ export function registerInteractionHandler(client,deps){
 
     if(i.commandName==='logs'){
       const sub=i.options.getSubcommand();
-      if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','CHANNEL_CREATE','CHANNEL_DELETE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
+      if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
       if(sub==='disable'){await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});await prisma.logConfig.deleteMany({where:{guildId:i.guildId}});return i.reply(deny('📋 Logs desactivados.'))}
       const row=await prisma.logConfig.findUnique({where:{guildId:i.guildId}});return i.reply(deny(row?'📋 Logs activos en <#'+row.channelId+'>.':'📋 Logs desactivados.'));
     }
