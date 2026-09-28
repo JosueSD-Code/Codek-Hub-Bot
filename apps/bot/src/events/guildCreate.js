@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{ensureGuild,logger}){client.on(Events.GuildCreate,guild=>ensureGuild(guild).catch(e=>logger.warn('Guild sync failed',{error:e.message})))}
