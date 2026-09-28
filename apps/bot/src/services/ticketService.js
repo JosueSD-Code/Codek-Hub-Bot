@@ -115,6 +115,7 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
       await ch.send({content:clip(i.user.toString()+' '+supportRoleIds.map(x=>'<@&'+x+'>').join(' '),2000),embeds:[ticketEmbed],components:[row]});
       await prisma.ticketStats.create({data:{guildId:i.guildId,userId:i.user.id,categoryId:cat.id,action:'created'}});
       await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n);
+      await logToChannel?.(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.','TICKET_CREATE');
       return i.editReply(deny('Ticket creado: '+ch));
     }catch(e){
       logger.error('Ticket creation failed',{error:e.message});
