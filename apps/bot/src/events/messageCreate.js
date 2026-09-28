@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{processAutoMod,logToChannel,originalConsole}){client.on(Events.MessageCreate,async message=>{try{const rule=await processAutoMod(message);if(rule)await logToChannel(message.guild,'🤖 AutoMod','Usuario: '+message.author.toString()+'\nRegla: '+rule.type+'\nAcción: '+rule.action)}catch(e){originalConsole.error('AutoMod failed',e)}});}
