@@ -6,7 +6,7 @@ const PUBLIC_VARIABLES={
   guildicon:'guildicon',servericon:'servericon',
   channel:'channel',channelname:'channelname',
   ticket:'ticket',category:'category',staff:'staff',
-  client:'client',clientavatar:'clientavatar',target:'target',targetavatar:'targetavatar'
+  client:'client',clientavatar:'clientavatar',target:'target',targetavatar:'targetavatar',date:'date',time:'time'
 };
 
 export function renderVariables(template,context={}){
@@ -35,7 +35,9 @@ export function renderVariables(template,context={}){
     client:context.client??context.reviewer??context.user??'user',
     clientavatar:context.clientavatar??context.reviewerAvatar??context.useravatar??'',
     target:context.target??context.targetMention??'user',
-    targetavatar:context.targetavatar??context.targetAvatar??''
+    targetavatar:context.targetavatar??context.targetAvatar??'',
+    date:context.date??new Date().toLocaleDateString('es-ES'),
+    time:context.time??new Date().toLocaleTimeString('es-ES')
   };
   return template.replace(/\{\s*([a-zA-Z0-9_]+)\s*\}/g,(_,key)=>{
     const normalized=key.toLowerCase();
