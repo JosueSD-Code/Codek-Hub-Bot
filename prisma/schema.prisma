@@ -21,6 +21,11 @@ model Guild {
   presenceConfig  PresenceConfig?
   autoResponders  AutoResponder[]
   auditLogs       AuditLog[]
+  moderationActions ModerationAction[]
+  logConfig       LogConfig?
+  giveaways       Giveaway[]
+  autoModRules    AutoModRule[]
+  ticketStats     TicketStats[]
 }
 
 model TicketPanel {
@@ -84,6 +89,9 @@ model Ticket {
   claimedById  String?
   createdAt    DateTime         @default(now())
   closedAt     DateTime?
+  closedReason String?
+  priority     String   @default("normal")
+  claimedAt    DateTime?
   answers      TicketAnswer[]
   claims       TicketClaim[]
   transcript   TicketTranscript?
@@ -206,4 +214,90 @@ model AuditLog {
   createdAt DateTime @default(now())
   @@index([guildId, createdAt])
   @@index([guildId, module, action])
+}
+\n
+model ModerationAction {
+  id          String   @id @default(uuid())
+  guildId     String
+  guild       Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
+  targetId    String
+  moderatorId String
+  action      String
+  reason      String?
+  duration    Int?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  @@index([guildId,targetId])
+  @@index([createdAt])
+}
+
+model LogConfig {
+  guildId   String   @id
+  guild      Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
+  channelId String
+  events    LogEvent[]
+}
+
+enum LogEvent {
+  MESSAGE_DELETE
+  MESSAGE_EDIT
+  MEMBER_JOIN
+  MEMBER_LEAVE
+  MEMBER_UPDATE
+  ROLE_CREATE
+  ROLE_DELETE
+  CHANNEL_CREATE
+  CHANNEL_DELETE
+  MODERATION
+  TICKET_CREATE
+  TICKET_CLOSE
+  TICKET_CLAIM
+  COMMAND
+}
+
+model Giveaway {
+  id           String   @id @default(uuid())
+  guildId      String
+  guild        Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
+  channelId    String
+  messageId    String
+  prize        String
+  winners      Int
+  endsAt       DateTime
+  createdBy    String
+  participants String[]
+  ended        Boolean  @default(false)
+  winnerIds    String[]
+  createdAt    DateTime @default(now())
+  @@index([guildId,ended,endsAt])
+}
+
+model AutoModRule {
+  id         String   @id @default(uuid())
+  guildId    String
+  guild      Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
+  type       String
+  enabled    Boolean  @default(true)
+  action     String   @default("delete")
+  threshold  Int?
+  whitelist  String[]
+  exceptions String[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  @@unique([guildId,type])
+  @@index([guildId,enabled])
+}
+
+model TicketStats {
+  id         String   @id @default(uuid())
+  guildId    String
+  guild      Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
+  userId     String?
+  staffId    String?
+  categoryId String?
+  action     String
+  timestamp  DateTime @default(now())
+  duration   Int?
+  @@index([guildId,timestamp])
+  @@index([guildId,action])
 }
