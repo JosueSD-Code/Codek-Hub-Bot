@@ -10,12 +10,12 @@ export function registerInteractionHandler(client,deps){
   const {
     prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,color,
     normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,
-    deleteOpenTicketsForCategory,createTicket,closeTicket,locks,
+    deleteOpenTicketsForCategory,createTicket,closeTicket,
     findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,
     renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,
     parseDuration,processAutoMod,serverStats,botStats,createGiveaway,
     toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,
-    purgeChannelMessages,purgeEverything,helpEmbed,validChannel,commandsForHandler
+    purgeChannelMessages,purgeEverything,helpEmbed
   }=deps;
 
   client.on(Events.InteractionCreate,async i=>{
