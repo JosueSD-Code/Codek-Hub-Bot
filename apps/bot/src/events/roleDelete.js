@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.RoleDelete,async role=>{await logToChannel(role.guild,'🗑️ Rol eliminado','Nombre: '+role.name+'\nID: '+role.id,'ROLE_DELETE')})}
