@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.ChannelUpdate,async(oldChannel,newChannel)=>{if(newChannel.guild)await logToChannel(newChannel.guild,'✏️ Canal actualizado','Canal: '+newChannel.toString()+'\nNombre anterior: '+oldChannel.name+'\nNombre nuevo: '+newChannel.name,'CHANNEL_DELETE')})}
