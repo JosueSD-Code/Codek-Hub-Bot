@@ -1473,7 +1473,7 @@ client.on(Events.InteractionCreate,async i=>{
         const channel=i.guild.channels.cache.get(ticket.channelId);
         if(sub==='adduser'){if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));await addTicketUser(channel,i.options.getUser('usuario').id);return i.reply(deny('Usuario añadido al ticket.'))}
         if(sub==='removeuser'){if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));const user=i.options.getUser('usuario');if(user.id===ticket.userId)return i.reply(deny('No puedes quitar al creador del ticket.'));await removeTicketUser(channel,user.id);return i.reply(deny('Usuario quitado del ticket.'))}
-        if(sub==='cerrar'){if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar el cierre con confirmar: true.'));await closeTicket(i,ticket);return}
+        if(sub==='cerrar'){if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar el cierre con confirmar: true.'));const reason=i.options.getString('razon')?.trim()||null;await closeTicket(i,ticket);await prisma.ticket.update({where:{id:ticket.id},data:{closedReason:reason}});return}
         if(sub==='reabrir'){
           const supportRoleIds=ticket.category.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
           if(!supportRoleIds.length)return i.reply(deny('La categoría ya no tiene roles de soporte válidos.'));
