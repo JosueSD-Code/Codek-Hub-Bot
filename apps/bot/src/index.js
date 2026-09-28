@@ -39,8 +39,7 @@ import path from 'node:path';
 
 const commands=[
   new SlashCommandBuilder()
-    .setName('tickets').setDescription('Configura tickets.')
-    .setDefaultMemberPermissions(ADMIN)
+     .setName('tickets').setDescription('Sistema de tickets.')
     .addSubcommand(s=>s.setName('panel').setDescription('Crea un panel.')
       .addStringOption(o=>o.setName('nombre').setDescription('Nombre').setRequired(true))
       .addChannelOption(o=>o.setName('canal').setDescription('Canal').addChannelTypes(ChannelType.GuildText).setRequired(true))
@@ -626,6 +625,7 @@ async function createTicket(i,cat,answers=[]){
       components:[row]
     });
 
+    await prisma.ticketStats.create({data:{guildId:i.guildId,userId:i.user.id,categoryId:cat.id,action:'created'}});
     await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n);
     await logToChannel(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.');
     return i.editReply(deny('Ticket creado: '+ch));
@@ -689,6 +689,7 @@ async function closeTicket(i,t){
       update:{html},
       create:{ticketId:t.id,html}
     });
+    await prisma.ticketStats.create({data:{guildId:i.guildId,userId:t.userId,staffId:i.user.id,categoryId:t.categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-t.createdAt.getTime())/1000))}});
     await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
     await logToChannel(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.');
 
