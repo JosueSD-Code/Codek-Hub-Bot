@@ -283,6 +283,7 @@ model AutoModRule {
   enabled    Boolean  @default(true)
   action     String   @default("delete")
   threshold  Int?
+  durationSeconds Int?
   whitelist  String[]
   exceptions String[]
   createdAt  DateTime @default(now())
