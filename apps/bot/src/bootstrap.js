@@ -108,7 +108,7 @@ import {
   const {findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket}=ticketRuntime;
   
   
-  registerInteractionHandler(client,{prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,locks,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed,validChannel,commandsForHandler:commands});
+  registerInteractionHandler(client,{prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,locks,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed});
   
   registerEvents(client,{prisma,processAutoMod,endGiveaway,logToChannel,renderVariables,context,clip,configureDiscordLogger,sendConsoleLog,logger,ensureGuild,deploy,presence,ADMIN,helpEmbed,findAutoResponder,color,safeUrl,audit,purgeChannelMessages,purgeEverything});
   
