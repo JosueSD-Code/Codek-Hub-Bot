@@ -1581,7 +1581,9 @@ client.on(Events.InteractionCreate,async i=>{
   }catch(e){
     logger.error('Interaction error',{error:e.message,stack:e.stack});
     if(!i.replied&&!i.deferred){
-      await i.reply'Usuario: '+ban.user.toString()+'\nID: '+ban.user.id);
+      await i.reply(deny(handleDiscordError(e))).catch(()=>{});
+    }
+  }
 });
 
 let shuttingDown=false;
