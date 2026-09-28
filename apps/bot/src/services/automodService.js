@@ -52,7 +52,6 @@ export async function processAutoMod(message){
   if(action==='delete')await message.delete().catch(()=>{});
   if(action==='timeout')await message.member?.timeout(durationMs(matched)*1000,'AutoMod').catch(()=>{});
   if(action==='ban')await message.member?.ban({reason:'AutoMod'}).catch(()=>{});
-  if(action==='warn')await message.author.send('⚠️ Tu mensaje fue moderado automáticamente en **'+message.guild.name+'**. Regla: '+matched.type+'.').catch(()=>{});
   await message.author.send('⚠️ Tu mensaje fue moderado automáticamente en **'+message.guild.name+'**. Regla: '+matched.type+'. Acción: '+action+'.').catch(()=>{});
   await prisma.moderationAction.create({
     data:{guildId:message.guild.id,targetId:message.author.id,moderatorId:message.client.user.id,action:'automod_'+action,reason:'Regla: '+matched.type,duration:action==='timeout'?durationMs(matched):null,expiresAt:action==='timeout'?new Date(Date.now()+durationMs(matched)*1000):null}
