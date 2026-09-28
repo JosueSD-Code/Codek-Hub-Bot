@@ -14,7 +14,7 @@ export async function history(guildId,targetId,limit=20){
 
 export function parseDuration(value){
   const raw=String(value??'').trim().toLowerCase();
-  const match=raw.match(/^(\\d+)\\s*(s|m|h|d|w)$/);
+  const match=raw.match(/^(\d+)\s*(s|m|h|d|w)$/);
   if(!match)return null;
   const amount=Number(match[1]);
   const units={s:1000,m:60000,h:3600000,d:86400000,w:604800000};
