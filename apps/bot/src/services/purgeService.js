@@ -1,5 +1,3 @@
-import { PermissionFlagsBits } from 'discord.js';
-
 export async function purgeChannelMessages(channel,limit=100){
   if(!channel?.isTextBased?.()||!channel?.messages?.fetch)return 0;
   const max=Math.max(1,Math.min(Number(limit)||1,10000));let remaining=max;let deleted=0;let before;
