@@ -142,7 +142,7 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
       await prisma.ticketTranscript.upsert({where:{ticketId:t.id},update:{html},create:{ticketId:t.id,html}});
       await prisma.ticketStats.create({data:{guildId:i.guildId,userId:t.userId,staffId:i.user.id,categoryId:t.categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-t.createdAt.getTime())/1000))}});
       await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
-      await logToChannel?.(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.');
+      await logToChannel?.(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.','TICKET_CLOSE');
       const g=await prisma.guild.findUnique({where:{id:i.guildId},select:{logChannelId:true}});const lc=g?.logChannelId?i.guild.channels.cache.get(g.logChannelId):null;
       if(lc?.isTextBased())await lc.send({content:'Transcripción del ticket #'+t.number,files:[{attachment:Buffer.from(html,'utf8'),name:'ticket-'+t.number+'.html'}]});
       await i.editReply(deny('Ticket cerrado. Transcripción guardada.'));setTimeout(()=>i.channel?.delete().catch(()=>{}),2500);
