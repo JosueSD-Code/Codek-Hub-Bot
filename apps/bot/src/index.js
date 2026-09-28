@@ -34,7 +34,7 @@ import { serverStats, botStats } from './services/statsService.js';
 import { findTicket, claim as claimTicket, release as releaseTicket, addUser as addTicketUser, removeUser as removeTicketUser, rename as renameTicket, move as moveTicket, stats as ticketStats } from './services/ticketService.js';
 import { create as createGiveaway, toggleParticipant, end as endGiveaway, cancel as cancelGiveaway } from './services/giveawayService.js';
 import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
-import { mkdir, writeFile, readdir } from 'node:fs/promises';
+import { mkdir, writeFile, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const commands=[
@@ -290,6 +290,9 @@ const commands=[
     .setDefaultMemberPermissions(ADMIN)
     .addSubcommand(s=>s.setName('create').setDescription('Crea un backup.'))
     .addSubcommand(s=>s.setName('list').setDescription('Lista backups.'))
+    .addSubcommand(s=>s.setName('restore').setDescription('Restaura configuración desde un backup.')
+      .addStringOption(o=>o.setName('archivo').setDescription('Nombre del archivo de backup').setRequired(true))
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la restauración').setRequired(true)))
   ];
 
 const roleIds=(g,v)=>roleIdsByName(g,v);
@@ -1460,6 +1463,29 @@ client.on(Events.InteractionCreate,async i=>{
     if(i.commandName==='config'){const sub=i.options.getSubcommand();const [welcome,vouch,panels,autoRules,logs]=await Promise.all([prisma.welcomeConfig.findUnique({where:{guildId:i.guildId}}),prisma.vouchConfig.findUnique({where:{guildId:i.guildId}}),prisma.ticketPanel.count({where:{guildId:i.guildId}}),prisma.autoModRule.count({where:{guildId:i.guildId,enabled:true}}),prisma.logConfig.findUnique({where:{guildId:i.guildId}})]);if(sub==='tickets')return i.reply(deny('🎫 Tickets: '+(panels?'✅':'❌')+' ('+panels+' paneles)'));if(sub==='welcome')return i.reply(deny('👋 Welcome: '+(welcome?.enabled?'✅':'❌')));if(sub==='logs')return i.reply(deny('📋 Logs: '+(logs?'✅':'❌')));if(sub==='automod')return i.reply(deny('🤖 AutoMod: '+(autoRules?'✅':'❌')+' ('+autoRules+' reglas)'));if(sub==='vouches')return i.reply(deny('⭐ Vouches: '+(vouch?.enabled?'✅':'❌')));return i.reply(deny('⚙️ Configuración\n🎫 Tickets '+(panels?'✅':'❌')+'\n👋 Welcome '+(welcome?.enabled?'✅':'❌')+'\n⭐ Vouches '+(vouch?.enabled?'✅':'❌')+'\n🤖 AutoMod '+(autoRules?'✅':'❌')+'\n📋 Logs '+(logs?'✅':'❌')))}
 
     if(i.commandName==='health'){const started=Date.now();await prisma.$queryRawUnsafe('SELECT 1');const dbMs=Date.now()-started;const since=new Date(Date.now()-86400000);const commands24=await prisma.auditLog.count({where:{guildId:i.guildId,module:'command',createdAt:{gte:since}}});return i.reply(deny('🩺 Health Check\nPostgreSQL: 🟢 '+dbMs+' ms\nDiscord: 🟢 '+Math.max(0,Math.round(client.ws.ping))+' ms\nUptime: '+formatUptime(process.uptime())+'\nMemoria: '+Math.round(process.memoryUsage().rss/1024/1024)+' MB\nComandos 24h: '+commands24))}
+
+    if(i.commandName==='backup'&&i.options.getSubcommand()==='restore'){
+      if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la restauración con confirmar: true.'));
+      const dir=path.join(process.cwd(),'backups');const file=i.options.getString('archivo');
+      if(path.basename(file)!==file||!file.startsWith('guild-'+i.guildId+'-')||!file.endsWith('.json'))return i.reply(deny('Archivo de backup no válido para este servidor.'));
+      const backup=JSON.parse(await readFile(path.join(dir,file),'utf8'));
+      if(backup?.id!==i.guildId)return i.reply(deny('El backup no pertenece a este servidor.'));
+      if(backup.welcomeConfig)await prisma.welcomeConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.welcomeConfig.enabled,channelId:backup.welcomeConfig.channelId,message:backup.welcomeConfig.message,title:backup.welcomeConfig.title,description:backup.welcomeConfig.description,color:backup.welcomeConfig.color,image:backup.welcomeConfig.image,thumbnail:backup.welcomeConfig.thumbnail,footer:backup.welcomeConfig.footer,goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,goodbyeMessage:backup.welcomeConfig.goodbyeMessage},create:{guildId:i.guildId,enabled:backup.welcomeConfig.enabled,channelId:backup.welcomeConfig.channelId,message:backup.welcomeConfig.message,title:backup.welcomeConfig.title,description:backup.welcomeConfig.description,color:backup.welcomeConfig.color,image:backup.welcomeConfig.image,thumbnail:backup.welcomeConfig.thumbnail,footer:backup.welcomeConfig.footer,goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,goodbyeMessage:backup.welcomeConfig.goodbyeMessage}});
+      if(backup.vouchConfig)await prisma.vouchConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.vouchConfig.enabled,channelId:backup.vouchConfig.channelId,allowedRoleIds:backup.vouchConfig.allowedRoleIds,cooldown:backup.vouchConfig.cooldown,title:backup.vouchConfig.title,description:backup.vouchConfig.description,color:backup.vouchConfig.color,image:backup.vouchConfig.image,thumbnail:backup.vouchConfig.thumbnail,footer:backup.vouchConfig.footer},create:{guildId:i.guildId,enabled:backup.vouchConfig.enabled,channelId:backup.vouchConfig.channelId,allowedRoleIds:backup.vouchConfig.allowedRoleIds,cooldown:backup.vouchConfig.cooldown,title:backup.vouchConfig.title,description:backup.vouchConfig.description,color:backup.vouchConfig.color,image:backup.vouchConfig.image,thumbnail:backup.vouchConfig.thumbnail,footer:backup.vouchConfig.footer}});
+      if(backup.presenceConfig)await prisma.presenceConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.presenceConfig.enabled,type:backup.presenceConfig.type,text:backup.presenceConfig.text},create:{guildId:i.guildId,enabled:backup.presenceConfig.enabled,type:backup.presenceConfig.type,text:backup.presenceConfig.text}});
+      if(backup.logConfig)await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:backup.logConfig.channelId,events:backup.logConfig.events},create:{guildId:i.guildId,channelId:backup.logConfig.channelId,events:backup.logConfig.events}});
+      for(const row of backup.autoResponders||[])await prisma.autoResponder.upsert({where:{id:row.id},update:{trigger:row.trigger,response:row.response,matchType:row.matchType,embedTitle:row.embedTitle,embedDescription:row.embedDescription,embedColor:row.embedColor,enabled:row.enabled},create:{id:row.id,guildId:i.guildId,trigger:row.trigger,response:row.response,matchType:row.matchType||'contains',embedTitle:row.embedTitle,embedDescription:row.embedDescription,embedColor:row.embedColor,enabled:row.enabled!==false}});
+      for(const row of backup.autoModRules||[])await prisma.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:row.type}},update:{enabled:row.enabled,action:row.action,threshold:row.threshold,whitelist:row.whitelist||[],exceptions:row.exceptions||[]},create:{guildId:i.guildId,type:row.type,enabled:row.enabled,action:row.action,threshold:row.threshold,whitelist:row.whitelist||[],exceptions:row.exceptions||[]}});
+      for(const panel of backup.panels||[]){
+        const restored=await prisma.ticketPanel.upsert({where:{guildId_name:{guildId:i.guildId,name:panel.name}},update:{channelId:panel.channelId,title:panel.title,description:panel.description,color:panel.color,image:panel.image,thumbnail:panel.thumbnail,footer:panel.footer,active:panel.active},create:{guildId:i.guildId,name:panel.name,channelId:panel.channelId,title:panel.title,description:panel.description,color:panel.color,image:panel.image,thumbnail:panel.thumbnail,footer:panel.footer,active:panel.active}});
+        for(const category of panel.categories||[]){
+          const restoredCategory=await prisma.ticketCategory.upsert({where:{panelId_name:{panelId:restored.id,name:category.name}},update:{description:category.description,emoji:category.emoji,supportRoleIds:category.supportRoleIds,discordCategoryId:category.discordCategoryId},create:{panelId:restored.id,name:category.name,description:category.description,emoji:category.emoji,supportRoleIds:category.supportRoleIds,discordCategoryId:category.discordCategoryId}});
+          for(const question of category.questions||[])await prisma.ticketQuestion.upsert({where:{categoryId_label:{categoryId:restoredCategory.id,label:question.label}},update:{placeholder:question.placeholder,required:question.required},create:{categoryId:restoredCategory.id,label:question.label,placeholder:question.placeholder,required:question.required}});
+        }
+      }
+      await audit(i.guildId,i.user.id,'backup','restore',file);
+      return i.reply(deny('💾 Backup restaurado. Los tickets históricos no fueron modificados.'));
+    }
 
     if(i.commandName==='backup'){const sub=i.options.getSubcommand();const dir=path.join(process.cwd(),'backups');await mkdir(dir,{recursive:true});if(sub==='create'){const data=await prisma.guild.findUnique({where:{id:i.guildId},include:{welcomeConfig:true,vouchConfig:true,presenceConfig:true,panels:{include:{categories:{include:{questions:true}}}},autoResponders:true,logConfig:true,autoModRules:true}});const file='guild-'+i.guildId+'-'+Date.now()+'.json';await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');return i.reply(deny('💾 Backup creado: `'+file+'`'))}const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'))}
     if(i.commandName==='tickets'){
