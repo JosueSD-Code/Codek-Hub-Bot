@@ -1,3 +1,4 @@
+import { applyCooldown } from '../middleware/rateLimit.js';
 import { Events, PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
