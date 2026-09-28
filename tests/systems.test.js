@@ -28,3 +28,19 @@ test('el registro de comandos se serializa sin duplicados',()=>{
 test('parseDuration rechaza overflow numérico',()=>{
   assert.equal(parseDuration('999999999999999999999999w'),null);
 });
+
+
+test('el wiring modular de Fase 2 carga correctamente',async()=>{
+  const [bootstrap,interaction,components,commandHandler,events]=await Promise.all([
+    import('../apps/bot/src/bootstrap.js'),
+    import('../apps/bot/src/handlers/interactionHandler.js'),
+    import('../apps/bot/src/interactions/componentHandler.js'),
+    import('../apps/bot/src/interactions/commandHandler.js'),
+    import('../apps/bot/src/events/index.js')
+  ]);
+  assert.equal(typeof bootstrap.startBot,'function');
+  assert.equal(typeof interaction.registerInteractionHandler,'function');
+  assert.equal(typeof components.handleComponentInteraction,'function');
+  assert.equal(typeof commandHandler.handleCommandInteraction,'function');
+  assert.equal(typeof events.registerEvents,'function');
+});
