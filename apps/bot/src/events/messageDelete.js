@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel,clip}){client.on(Events.MessageDelete,async message=>{if(!message.guild)return;await logToChannel(message.guild,'🗑️ Mensaje eliminado','Autor: '+(message.author?.toString()||'desconocido')+'\nCanal: '+message.channel?.toString()+'\nContenido: '+clip(message.content||'[no disponible]',3500),'MESSAGE_DELETE')})}
