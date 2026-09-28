@@ -1,6 +1,6 @@
 import { Events } from 'discord.js';
 
-export function register(client,{prisma,endGiveaway,configureDiscordLogger,sendConsoleLog,logger,renderVariables,context,clip,logToChannel}){
+export function register(client,{prisma,endGiveaway,configureDiscordLogger,sendConsoleLog,logger,ensureGuild,deploy,presence}){
   const originalConsole={log:console.log,warn:console.warn,error:console.error};
   configureDiscordLogger(client,async()=>{
     const rows=await prisma.guild.findMany({where:{logChannelId:{not:null}},select:{logChannelId:true}});
@@ -28,8 +28,14 @@ export function register(client,{prisma,endGiveaway,configureDiscordLogger,sendC
 
   setInterval(()=>{void processDueGiveaways()},15000).unref?.();
 
-  client.once(Events.ClientReady,async()=>{
-    logger.info('Runtime events registered',{guilds:client.guilds.cache.size});
-    await processDueGiveaways();
+  client.once(Events.ClientReady,async c=>{
+    try{
+      await prisma.$queryRaw`SELECT 1`;
+      for(const guild of c.guilds.cache.values())await ensureGuild(guild);
+      await deploy();
+      await presence();
+      await processDueGiveaways();
+      logger.info('Codek Hub conectado',{user:c.user.tag,guilds:c.guilds.cache.size});
+    }catch(e){logger.error('Startup failed',{error:e.message,stack:e.stack});process.exitCode=1;try{await prisma.$disconnect()}catch{} }
   });
 }
