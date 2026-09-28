@@ -22,11 +22,11 @@ export async function sendConsoleLog(level,message,metadata={}){
   const body=String(message??'').slice(0,3900);
   const embed=new EmbedBuilder()
     .setTitle('📝 Console Log • '+String(level).toUpperCase())
-    .setDescription('```\\n'+body+'\\n```')
+    .setDescription('```\n'+body+'\n```')
     .setColor(color(level))
     .setTimestamp();
   if(Object.keys(metadata).length){
-    embed.addFields({name:'Metadata',value:'```json\\n'+JSON.stringify(metadata,null,2).slice(0,900)+'\\n```'});
+    embed.addFields({name:'Metadata',value:'```json\n'+JSON.stringify(metadata,null,2).slice(0,900)+'\n```'});
   }
   forwarding=true;
   try{await channel.send({embeds:[embed]})}finally{forwarding=false}
