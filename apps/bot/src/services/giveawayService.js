@@ -1,4 +1,4 @@
-import { prisma } from '../../../packages/shared/src/index.js';
+import { prisma } from '../../../../packages/shared/src/index.js';
 
 export async function create({guildId,channelId,messageId,prize,winners,endsAt,createdBy}){
   return prisma.giveaway.create({data:{guildId,channelId,messageId,prize,winners,endsAt,createdBy,participants:[],winnerIds:[]}});
