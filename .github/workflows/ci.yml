@@ -25,5 +25,7 @@ jobs:
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
 
+      - name: Syntax check
+        run: find apps packages tests -name '*.js' -print0 | xargs -0 -n1 node --check
       - name: Run tests
         run: npm test
