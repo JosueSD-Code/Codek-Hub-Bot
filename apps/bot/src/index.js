@@ -1871,7 +1871,7 @@ async function processDueGiveaways(){
 setInterval(()=>{void processDueGiveaways()},15000);
 
 client.on(Events.MessageCreate,async message=>{
-  try{await processAutoMod(message)}catch(e){originalConsole.error('AutoMod failed',e)}
+  try{const rule=await processAutoMod(message);if(rule)await logToChannel(message.guild,'🤖 AutoMod','Usuario: '+message.author.toString()+'\nRegla: '+rule.type+'\nAcción: '+rule.action)}catch(e){originalConsole.error('AutoMod failed',e)}
 });
 
 client.on(Events.MessageDelete,async message=>{
