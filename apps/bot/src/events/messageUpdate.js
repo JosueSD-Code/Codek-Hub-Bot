@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel,clip}){client.on(Events.MessageUpdate,async(oldMessage,newMessage)=>{if(!newMessage.guild||oldMessage.content===newMessage.content)return;await logToChannel(newMessage.guild,'✏️ Mensaje editado','Autor: '+(newMessage.author?.toString()||'desconocido')+'\nCanal: '+newMessage.channel?.toString()+'\nAntes: '+clip(oldMessage.content||'[vacío]',1500)+'\nDespués: '+clip(newMessage.content||'[vacío]',1500),'MESSAGE_EDIT')})}
