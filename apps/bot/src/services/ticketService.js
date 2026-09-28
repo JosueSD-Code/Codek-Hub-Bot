@@ -31,13 +31,17 @@ export async function rename(channel,name){return channel.setName(String(name).t
 export async function move(channel,categoryId){return channel.setParent(categoryId,{lockPermissions:false})}
 
 export async function stats(guildId){
-  const [open,closed,claims,categories]=await Promise.all([
+  const [open,closed,claims,categories,closedRows,staffRows,userRows]=await Promise.all([
     prisma.ticket.count({where:{guildId,status:'open'}}),
     prisma.ticket.count({where:{guildId,status:'closed'}}),
     prisma.ticketClaim.count({where:{ticket:{guildId}}}),
-    prisma.ticketCategory.findMany({where:{panel:{guildId}},select:{id:true,name:true,_count:{select:{tickets:true}}}})
+    prisma.ticketCategory.findMany({where:{panel:{guildId}},select:{id:true,name:true,_count:{select:{tickets:true}}}}),
+    prisma.ticketStats.findMany({where:{guildId,action:'closed',duration:{not:null}},select:{duration:true}}),
+    prisma.ticketStats.groupBy({by:['staffId'],where:{guildId,action:'closed',staffId:{not:null}},_count:{staffId:true},orderBy:{_count:{staffId:'desc'}},take:10}),
+    prisma.ticketStats.groupBy({by:['userId'],where:{guildId,action:'created',userId:{not:null}},_count:{userId:true},orderBy:{_count:{userId:'desc'}},take:10})
   ]);
-  return {open,closed,claims,categories};
+  const averageResolutionSeconds=closedRows.length?Math.round(closedRows.reduce((sum,row)=>sum+(row.duration||0),0)/closedRows.length):0;
+  return {open,closed,claims,categories,averageResolutionSeconds,topStaff:staffRows,topUsers:userRows};
 }
 
 export function createTicketRuntime({client,logger,audit,renderVariables,context,clip,deny,logToChannel}){
