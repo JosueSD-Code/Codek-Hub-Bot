@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.RoleCreate,async role=>{await logToChannel(role.guild,'🎭 Rol creado','Rol: '+role.toString()+'\nID: '+role.id,'ROLE_CREATE')})}
