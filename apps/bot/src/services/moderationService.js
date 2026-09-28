@@ -17,6 +17,7 @@ export function parseDuration(value){
   const match=raw.match(/^(\d+)\s*(s|m|h|d|w)$/);
   if(!match)return null;
   const amount=Number(match[1]);
+  if(!Number.isSafeInteger(amount))return null;
   const units={s:1000,m:60000,h:3600000,d:86400000,w:604800000};
   const ms=amount*units[match[2]];
   if(!Number.isFinite(ms)||ms<=0)return null;
