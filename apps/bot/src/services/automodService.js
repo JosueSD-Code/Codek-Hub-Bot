@@ -1,4 +1,4 @@
-import { prisma } from '../../../packages/shared/src/index.js';
+import { prisma } from '../../../../packages/shared/src/index.js';
 
 const spamState=new Map();
 
