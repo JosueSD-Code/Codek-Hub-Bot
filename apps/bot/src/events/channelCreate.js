@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.ChannelCreate,async channel=>{if(channel.guild)await logToChannel(channel.guild,'📁 Canal creado','Canal: '+channel.toString()+'\nNombre: '+channel.name,'CHANNEL_CREATE')})}
