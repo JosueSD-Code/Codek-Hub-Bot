@@ -11,7 +11,7 @@ export async function findTicket(guildId,identifier){
 }
 
 export async function claim(ticket,userId){
-  const updated=await prisma.ticket.updateMany({where:{id:ticket.id,status:'open'},data:{claimedById:userId}});
+  const updated=await prisma.ticket.updateMany({where:{id:ticket.id,status:'open'},data:{claimedById:userId,claimedAt:new Date()}});
   if(!updated.count)throw new Error('El ticket ya está cerrado.');
   await prisma.ticketClaim.create({data:{ticketId:ticket.id,userId}});
   return {message:'Ticket reclamado correctamente.',ticket:{...ticket,claimedById:userId}};
