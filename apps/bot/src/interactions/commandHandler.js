@@ -1,4 +1,5 @@
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
+import { checkBotPermissions } from '../middleware/botPermissions.js';
 import path from 'node:path';
 import {
   PermissionFlagsBits,
