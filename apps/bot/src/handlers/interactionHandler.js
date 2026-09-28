@@ -550,11 +550,12 @@ export function registerInteractionHandler(client,deps){
       const enabled=i.options.getBoolean('enabled');const action=i.options.getString('action');
       const threshold=sub==='spam'?i.options.getInteger('limit'):sub==='mentions'?i.options.getInteger('limit'):sub==='caps'?i.options.getInteger('percentage'):null;
       const whitelist=sub==='links'?String(i.options.getString('whitelist')||'').split(',').map(x=>x.trim()).filter(Boolean):sub==='words'?String(i.options.getString('words')||'').split(',').map(x=>x.trim()).filter(Boolean):[];
+      const exceptions=String(i.options.getString('excepciones')||'').split(',').map(x=>x.trim()).filter(Boolean);
       const parsedDuration=i.options.getString('duracion')?parseDuration(i.options.getString('duracion')):null;
       if(i.options.getString('duracion')&&!parsedDuration)return i.reply(deny('Duración inválida. Usa 1h, 6h, 1d o 1w.'));
       if(parsedDuration&&parsedDuration.ms>28*24*60*60*1000)return i.reply(deny('Discord permite un máximo de 28 días para timeout.'));
       const durationSeconds=parsedDuration?.seconds??null;
-      await prisma.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:sub}},update:{enabled,action,threshold,durationSeconds,whitelist},create:{guildId:i.guildId,type:sub,enabled,action,threshold,durationSeconds,whitelist,exceptions:[]}});
+      await prisma.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:sub}},update:{enabled,action,threshold,durationSeconds,whitelist,exceptions},create:{guildId:i.guildId,type:sub,enabled,action,threshold,durationSeconds,whitelist,exceptions}});
       return i.reply(deny('🤖 Regla AutoMod **'+sub+'** actualizada.'));
     }
 
