@@ -2,7 +2,7 @@ import {
   Client, GatewayIntentBits, Events, SlashCommandBuilder, REST, Routes,
   PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder,
   ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder,
-  TextInputStyle, ActivityType
+  TextInputStyle, ActivityType, AttachmentBuilder
 } from 'discord.js';
 import {
   loadEnvironment, logger, renderVariables, prisma,
@@ -34,6 +34,8 @@ import { serverStats, botStats } from './services/statsService.js';
 import { findTicket, claim as claimTicket, release as releaseTicket, addUser as addTicketUser, removeUser as removeTicketUser, rename as renameTicket, move as moveTicket, stats as ticketStats } from './services/ticketService.js';
 import { create as createGiveaway, toggleParticipant, end as endGiveaway, cancel as cancelGiveaway } from './services/giveawayService.js';
 import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
+import { mkdir, writeFile, readdir } from 'node:fs/promises';
+import path from 'node:path';
 
 const commands=[
   new SlashCommandBuilder()
@@ -84,7 +86,36 @@ const commands=[
     .addSubcommand(s=>s.setName('pregunta-eliminar').setDescription('Elimina una pregunta.')
       .addStringOption(o=>o.setName('categoria').setDescription('Nombre de la categoría').setRequired(true))
       .addStringOption(o=>o.setName('label').setDescription('Texto de la pregunta').setRequired(true))
-      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true))),
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma la eliminación').setRequired(true)))
+    .addSubcommand(s=>s.setName('reclamar').setDescription('Reclama un ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true)))
+    .addSubcommand(s=>s.setName('liberar').setDescription('Libera un ticket reclamado.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true)))
+    .addSubcommand(s=>s.setName('adduser').setDescription('Añade un usuario al ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)))
+    .addSubcommand(s=>s.setName('removeuser').setDescription('Quita un usuario del ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)))
+    .addSubcommand(s=>s.setName('cerrar').setDescription('Cierra un ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addBooleanOption(o=>o.setName('confirmar').setDescription('Confirma el cierre').setRequired(true))
+      .addStringOption(o=>o.setName('razon').setDescription('Razón')))
+    .addSubcommand(s=>s.setName('reabrir').setDescription('Reabre un ticket cerrado.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true)))
+    .addSubcommand(s=>s.setName('renombrar').setDescription('Renombra el canal del ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addStringOption(o=>o.setName('nombre').setDescription('Nuevo nombre').setRequired(true)))
+    .addSubcommand(s=>s.setName('mover').setDescription('Mueve el ticket de categoría.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addChannelOption(o=>o.setName('categoria').setDescription('Categoría Discord').addChannelTypes(ChannelType.GuildCategory).setRequired(true)))
+    .addSubcommand(s=>s.setName('prioridad').setDescription('Cambia la prioridad del ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))
+      .addStringOption(o=>o.setName('nivel').setDescription('Prioridad').setRequired(true)
+        .addChoices({name:'Baja',value:'low'},{name:'Normal',value:'normal'},{name:'Alta',value:'high'})))
+    .addSubcommand(s=>s.setName('stats').setDescription('Estadísticas de tickets.'))
+    .addSubcommand(s=>s.setName('transcript').setDescription('Obtiene la transcripción de un ticket.')
+      .addStringOption(o=>o.setName('ticket').setDescription('ID, canal o número').setRequired(true))),
 
   new SlashCommandBuilder()
     .setName('welcome').setDescription('Configura bienvenida.')
@@ -204,6 +235,25 @@ const commands=[
     .addSubcommand(s=>s.setName('spam').setDescription('Configura anti-spam.')
       .addBooleanOption(o=>o.setName('enabled').setRequired(true))
       .addIntegerOption(o=>o.setName('limit').setMinValue(2).setMaxValue(20).setRequired(true))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'})))
+    .addSubcommand(s=>s.setName('links').setDescription('Configura bloqueo de enlaces.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addStringOption(o=>o.setName('whitelist').setDescription('Dominios separados por coma'))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'})))
+    .addSubcommand(s=>s.setName('invites').setDescription('Configura bloqueo de invitaciones.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'})))
+    .addSubcommand(s=>s.setName('words').setDescription('Configura palabras prohibidas.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addStringOption(o=>o.setName('words').setDescription('Palabras separadas por coma').setRequired(true))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'})))
+    .addSubcommand(s=>s.setName('mentions').setDescription('Configura límite de menciones.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addIntegerOption(o=>o.setName('limit').setMinValue(1).setMaxValue(20).setRequired(true))
+      .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'})))
+    .addSubcommand(s=>s.setName('caps').setDescription('Configura límite de mayúsculas.')
+      .addBooleanOption(o=>o.setName('enabled').setRequired(true))
+      .addIntegerOption(o=>o.setName('percentage').setMinValue(50).setMaxValue(100).setRequired(true))
       .addStringOption(o=>o.setName('action').setRequired(true).addChoices({name:'Eliminar',value:'delete'},{name:'Advertir',value:'warn'},{name:'Timeout',value:'timeout'},{name:'Ban',value:'ban'}))),
   new SlashCommandBuilder().setName('giveaway').setDescription('Gestiona sorteos.')
     .setDefaultMemberPermissions(ADMIN)
@@ -218,6 +268,11 @@ const commands=[
     .addSubcommand(s=>s.setName('cancel').setDescription('Cancela un sorteo.')
       .addStringOption(o=>o.setName('id').setDescription('ID').setRequired(true)))
     .addSubcommand(s=>s.setName('list').setDescription('Lista sorteos activos.')),
+  new SlashCommandBuilder().setName('vouches').setDescription('Consulta reputación y vouches.')
+    .addSubcommand(s=>s.setName('view').setDescription('Ver perfil de reputación.')
+      .addUserOption(o=>o.setName('usuario').setDescription('Usuario').setRequired(true)))
+    .addSubcommand(s=>s.setName('top').setDescription('Top 10 de vouches.'))
+    .addSubcommand(s=>s.setName('stats').setDescription('Estadísticas del sistema.')),
   new SlashCommandBuilder().setName('stats').setDescription('Muestra estadísticas.')
     .addSubcommand(s=>s.setName('server').setDescription('Estadísticas del servidor.'))
     .addSubcommand(s=>s.setName('bot').setDescription('Estadísticas de Codek Hub.')),
