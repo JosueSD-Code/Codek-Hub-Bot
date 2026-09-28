@@ -218,7 +218,7 @@ model AuditLog {
   @@index([guildId, createdAt])
   @@index([guildId, module, action])
 }
-\n
+
 model ModerationAction {
   id          String   @id @default(uuid())
   guildId     String
