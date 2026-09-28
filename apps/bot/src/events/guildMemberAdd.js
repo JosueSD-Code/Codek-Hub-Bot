@@ -1,4 +1,4 @@
-import { Events } from 'discord.js';
+import { Events, EmbedBuilder } from 'discord.js';
 export function register(client,{logToChannel,prisma,renderVariables,context,clip,color,safeUrl,audit}){
   client.on(Events.GuildMemberAdd,async member=>{
     await logToChannel(member.guild,'📥 Usuario entró','Usuario: '+member.user.toString()+'\nID: '+member.id,'MEMBER_JOIN');
@@ -8,7 +8,7 @@ export function register(client,{logToChannel,prisma,renderVariables,context,cli
       const channel=member.guild.channels.cache.get(config.channelId);
       if(!channel?.isTextBased())return;
       const x=context(member.user,member.guild,channel);
-      const embed=new (await import('discord.js')).EmbedBuilder()
+      const embed=new EmbedBuilder()
         .setTitle(clip(renderVariables(config.title||'¡Bienvenido!',x),256))
         .setDescription(clip(renderVariables(config.description||'',x),4096))
         .setColor(color(config.color))
