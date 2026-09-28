@@ -9,7 +9,9 @@ export async function toggleParticipant(id,userId){
   if(!row||row.ended)return null;
   const participants=new Set(row.participants||[]);
   if(participants.has(userId))participants.delete(userId);else participants.add(userId);
-  return prisma.giveaway.update({where:{id},data:{participants:[...participants]}});
+  const updated=await prisma.giveaway.updateMany({where:{id,ended:false},data:{participants:[...participants]}});
+  if(!updated.count)return null;
+  return prisma.giveaway.findUnique({where:{id}});
 }
 
 export function choose(row){
@@ -21,9 +23,13 @@ export function choose(row){
 
 export async function end(row){
   const winnerIds=choose(row);
-  return prisma.giveaway.update({where:{id:row.id},data:{ended:true,winnerIds}});
+  const updated=await prisma.giveaway.updateMany({where:{id:row.id,ended:false},data:{ended:true,winnerIds}});
+  if(!updated.count)return null;
+  return prisma.giveaway.findUnique({where:{id:row.id}});
 }
 
 export async function cancel(row){
-  return prisma.giveaway.update({where:{id:row.id},data:{ended:true,winnerIds:[]}});
+  const updated=await prisma.giveaway.updateMany({where:{id:row.id,ended:false},data:{ended:true,winnerIds:[]}});
+  if(!updated.count)return null;
+  return prisma.giveaway.findUnique({where:{id:row.id}});
 }
