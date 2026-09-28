@@ -1312,7 +1312,6 @@ client.on(Events.InteractionCreate,async i=>{
 
     if(i.commandName==='autoresponder'){
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
-      const sub=i.options.getSubcommand();
 
       if(sub==='add'){
         const trigger=i.options.getString('trigger').trim();
