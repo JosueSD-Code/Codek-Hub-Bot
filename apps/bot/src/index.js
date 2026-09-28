@@ -1216,6 +1216,22 @@ client.on(Events.InteractionCreate,async i=>{
       return i.reply(deny('Bienvenida configurada.'));
     }
 
+    if(i.commandName==='welcome'&&['test','preview'].includes(i.options.getSubcommand())){
+      const config=await prisma.welcomeConfig.findUnique({where:{guildId:i.guildId}});
+      if(!config?.enabled)return i.reply(deny('La bienvenida no está configurada.'));
+      const channel=config.channelId?i.guild.channels.cache.get(config.channelId):i.channel;
+      const member=i.member;
+      const x=context(i.user,i.guild,channel);
+      const embed=new EmbedBuilder().setTitle(clip(renderVariables(config.title||'¡Bienvenido!',x),256)).setDescription(clip(renderVariables(config.description||config.message||'Bienvenido {mention} a {server}.',x),4096)).setColor(color(config.color));
+      if(config.image&&safeUrl(config.image))embed.setImage(safeUrl(config.image));
+      if(config.thumbnail&&safeUrl(config.thumbnail))embed.setThumbnail(safeUrl(config.thumbnail));
+      if(config.footer)embed.setFooter({text:clip(renderVariables(config.footer,x),2048)});
+      if(i.options.getSubcommand()==='preview')return i.reply({embeds:[embed],flags:64});
+      if(!channel?.isTextBased())return i.reply(deny('El canal de bienvenida ya no existe.'));
+      await channel.send({content:renderVariables(config.message||'',x),embeds:[embed]});
+      return i.reply(deny('Prueba de bienvenida enviada en '+channel.toString()+'.'));
+    }
+
     if(i.commandName==='vouch-config'){
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
 
