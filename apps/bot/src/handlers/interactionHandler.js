@@ -613,7 +613,7 @@ export function registerInteractionHandler(client,deps){
         const member=i.member;
         const isSupport=Boolean(member?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>member.roles.cache.has(x));
         if(sub==='reclamar'&&!isSupport&&!isAdmin(i))return i.reply(deny('Solo soporte puede reclamar tickets.'));
-        if(sub==='reclamar'){const result=await claimTicket(ticket,i.user.id);await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:ticket.userId,categoryId:ticket.categoryId,action:'claimed'}});await audit(i.guildId,i.user.id,'tickets','claimed','ticket:'+ticket.id);return i.reply(deny(result.message))}
+        if(sub==='reclamar'){const result=await claimTicket(ticket,i.user.id);await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:ticket.userId,categoryId:ticket.categoryId,action:'claimed'}});await audit(i.guildId,i.user.id,'tickets','claimed','ticket:'+ticket.id);await logToChannel(i.guild,'🎫 Ticket reclamado','<@'+i.user.id+'> reclamó el ticket #'+ticket.number+'.','TICKET_CLAIM');return i.reply(deny(result.message))}
         if(sub==='liberar'){if(ticket.claimedById&&ticket.claimedById!==i.user.id&&!isAdmin(i))return i.reply(deny('Solo quien reclamó el ticket o un administrador puede liberarlo.'));await releaseTicket(ticket);return i.reply(deny('Ticket liberado.'))}
         const member=i.member;const isSupport=Boolean(member?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>member.roles.cache.has(x));
         if(!isSupport&&!isAdmin(i)&&ticket.userId!==i.user.id)return i.reply(deny('No tienes permisos para gestionar este ticket.'));
