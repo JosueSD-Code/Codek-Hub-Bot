@@ -352,23 +352,16 @@ function helpEmbed(){
     .setColor(0x5865F2)
     .addFields(
       {name:'🎫 Tickets',value:[
-        '/tickets panel',
-        '/tickets categoria',
-        '/tickets pregunta',
-        '/tickets publicar',
-        '/tickets panel-list',
-        '/tickets panel-renombrar',
-        '/tickets panel-eliminar',
-        '/tickets panel-reset',
-        '⚠️ panel-reset elimina toda la configuración de paneles.',
-        '/tickets categoria-list',
-        '/tickets categoria-eliminar',
-        '/tickets pregunta-list',
-        '/tickets pregunta-eliminar',
-        '/tickets log',
-        '/tickets log-reset'
+        '/tickets panel • categoria • pregunta • publicar',
+        '/tickets reclamar • liberar • adduser • removeuser',
+        '/tickets cerrar • reabrir • renombrar • mover • prioridad',
+        '/tickets stats • transcript',
+        '/tickets panel-list • panel-renombrar • panel-eliminar • panel-reset',
+        '/tickets categoria-list • categoria-eliminar',
+        '/tickets pregunta-list • pregunta-eliminar',
+        '/tickets log • log-reset'
       ].join('\n')},
-      {name:'👋 Bienvenida',value:'/welcome set\n/welcome reset'},
+      {name:'👋 Bienvenida',value:'/welcome set • reset • test • preview'},
       {name:'⭐ Vouches',value:'/vouch\n/vouch-config set\n/vouch-config reset'},
       {name:'🤖 Autoresponders',value:'/autoresponder add\n/autoresponder remove\n/autoresponder list'},
       {name:'🎮 Rich Presence',value:'/presence set\n/presence reset'},
