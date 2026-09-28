@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.GuildBanAdd,async ban=>{await logToChannel(ban.guild,'🔨 Usuario baneado','Usuario: '+ban.user.toString()+'\nID: '+ban.user.id,'MODERATION')})}
