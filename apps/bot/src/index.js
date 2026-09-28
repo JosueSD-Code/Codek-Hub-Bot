@@ -1806,7 +1806,7 @@ client.on(Events.InteractionCreate,async i=>{
   }catch(e){
     logger.error('Interaction error',{error:e.message,stack:e.stack});
     if(!i.replied&&!i.deferred){
-      await i.reply(deny('Ocurrió un error al ejecutar el comando. Revisa los logs del bot.')).catch(()=>{});
+      await i.reply(deny(handleDiscordError(e))).catch(()=>{});
     }
   }
 });
