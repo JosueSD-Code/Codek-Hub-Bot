@@ -1,7 +1,12 @@
 import { applyCooldown } from '../middleware/rateLimit.js';
+import { checkBotPermissions } from '../middleware/botPermissions.js';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { Events, PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle, AttachmentBuilder } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
+  function formatUptime(seconds){const total=Math.max(0,Math.floor(Number(seconds)||0));const d=Math.floor(total/86400);const h=Math.floor(total%86400/3600);const m=Math.floor(total%3600/60);const s=total%60;return (d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0')}
+
   const {
     prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,color,
     normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,
@@ -9,7 +14,7 @@ export function registerInteractionHandler(client,deps){
     findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,
     renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,
     parseDuration,processAutoMod,serverStats,botStats,createGiveaway,
-    toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,
+    toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,
     purgeChannelMessages,purgeEverything,helpEmbed,validChannel,commandsForHandler
   }=deps;
 
@@ -164,14 +169,15 @@ export function registerInteractionHandler(client,deps){
         return i.reply(deny('No tienes permiso para usar /vouch.'));
       }
 
-      const memoryLast=cooldowns.get(i.guildId+':'+i.user.id)||0;
       const dbLast=await prisma.vouch.findFirst({
         where:{guildId:i.guildId,reviewerId:i.user.id},
         orderBy:{createdAt:'desc'},
         select:{createdAt:true}
       });
-      const last=Math.max(memoryLast,dbLast?.createdAt?.getTime()||0);
-      if(Date.now()-last<c.cooldown*1000)return i.reply(deny('Espera antes de enviar otro vouch.'));
+      if(dbLast&&Date.now()-dbLast.createdAt.getTime()<c.cooldown*1000)return i.reply(deny('Espera antes de enviar otro vouch.'));
+      const dayStart=new Date(Date.now()-24*60*60*1000);
+      const dailyCount=await prisma.vouch.count({where:{guildId:i.guildId,reviewerId:i.user.id,createdAt:{gte:dayStart}}});
+      if(dailyCount>=10)return i.reply(deny('Has alcanzado el límite de **10 vouches por día**.'));
 
       const duplicate=await prisma.vouch.findFirst({
         where:{guildId:i.guildId,targetId,reviewerId:i.user.id}
@@ -438,6 +444,7 @@ export function registerInteractionHandler(client,deps){
     }
 
     if(i.commandName==='autoresponder'){
+      const sub=i.options.getSubcommand();
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
 
       if(sub==='add'){
