@@ -41,6 +41,9 @@ import { registerInteractionHandler } from './handlers/interactionHandler.js';
 import { createLogService } from './services/logService.js';
 import { createTicketRuntime } from './services/ticketService.js';
 import { purgeChannelMessages,purgeEverything } from './services/purgeService.js';
+import { createPresenceService } from './services/presenceService.js';
+import { deployCommands } from './handlers/commandHandler.js';
+import { registerLifecycle } from './handlers/lifecycleHandler.js';
 import { createHelpEmbed } from './utils/help.js';
 
 import { commands } from './commands.js';
@@ -99,76 +102,11 @@ const helpEmbed=()=>createHelpEmbed(client);
 
 const {logToChannel}=createLogService(prisma,logger);
 const ticketRuntime=createTicketRuntime({client,logger,audit,renderVariables,context,clip,deny,logToChannel});
+const presence=createPresenceService(client,prisma);
+const deploy=()=>deployCommands(client,env,commands,logger);
+registerLifecycle({client,prisma,logger});
 const {findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket}=ticketRuntime;
 
-async function presence(){
-  const p=await prisma.presenceConfig.findFirst({
-    where:{enabled:true},
-    orderBy:{updatedAt:'desc'}
-  });
-  if(!p||!client.user){
-    return client.user?.setPresence({activities:[],status:'online'});
-  }
-  const t={Playing:ActivityType.Playing,Watching:ActivityType.Watching,Listening:ActivityType.Listening};
-  client.user.setPresence({
-    activities:[{name:p.text,type:t[p.type]??ActivityType.Watching}],
-    status:'online'
-  });
-}
-
-async function deploy(){
-  const rest=new REST({version:'10'}).setToken(env.DISCORD_TOKEN);
-  const body=commands.map(c=>c.toJSON());
-
-  // Registrar siempre los comandos como comandos de servidor para que
-  // los cambios aparezcan inmediatamente en todos los servidores donde
-  // está instalado el bot. Se limpian los comandos globales para evitar
-  // duplicados entre versiones globales y de servidor.
-  await rest.put(Routes.applicationCommands(env.DISCORD_CLIENT_ID),{body:[]});
-
-  let deployed=0;
-  for(const guild of client.guilds.cache.values()){
-    try{
-      await rest.put(
-        Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID,guild.id),
-        {body}
-      );
-      deployed++;
-    }catch(e){
-      logger.warn('Could not deploy guild commands',{
-        guildId:guild.id,
-        error:e.message
-      });
-    }
-  }
-
-  logger.info('Commands deployed to guilds',{
-    count:body.length,
-    guilds:deployed
-  });
-}
-
-
-let shuttingDown=false;
-
-async function shutdown(signal,exitCode=0){
-  if(shuttingDown)return;
-  shuttingDown=true;
-  logger.info('Shutting down Codek Hub',{signal});
-  try{client.destroy();}catch(e){logger.warn('Discord shutdown failed',{error:e.message});}
-  try{await prisma.$disconnect();}catch(e){logger.warn('Database shutdown failed',{error:e.message});}
-  process.exit(exitCode);
-}
-
-process.on('SIGINT',()=>{void shutdown('SIGINT',0);});
-process.on('SIGTERM',()=>{void shutdown('SIGTERM',0);});
-process.on('unhandledRejection',reason=>{
-  logger.error('Unhandled promise rejection',{error:String(reason?.stack||reason)});
-});
-process.on('uncaughtException',error=>{
-  logger.error('Uncaught exception',{error:error.stack||error.message});
-  void shutdown('uncaughtException',1);
-});
 
 registerInteractionHandler(client,{prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,locks,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed,validChannel,commandsForHandler:commands});
 
