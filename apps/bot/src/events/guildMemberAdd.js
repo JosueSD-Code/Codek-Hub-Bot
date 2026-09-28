@@ -1,0 +1,2 @@
+import { Events } from 'discord.js';
+export function register(client,{logToChannel}){client.on(Events.GuildMemberAdd,async member=>{await logToChannel(member.guild,'📥 Usuario entró','Usuario: '+member.user.toString()+'\nID: '+member.id,'MEMBER_JOIN')})}
