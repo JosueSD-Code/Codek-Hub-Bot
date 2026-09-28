@@ -968,7 +968,7 @@ client.on(Events.InteractionCreate,async i=>{
         await prisma.$transaction(async tx=>{
           const result=await tx.ticket.updateMany({
             where:{id,status:'open',claimedById:null},
-            data:{claimedById:i.user.id}
+            data:{claimedById:i.user.id,claimedAt:new Date()}
           });
           if(!result.count){
             const error=new Error('TICKET_ALREADY_CLAIMED');
@@ -983,6 +983,7 @@ client.on(Events.InteractionCreate,async i=>{
         throw e;
       }
 
+      await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:t.userId,categoryId:t.categoryId,action:'claimed'}});
       await audit(i.guildId,i.user.id,'tickets','claimed','#'+t.number);
       return i.reply(deny('Ticket reclamado por '+i.user.toString()+'.'));
     }
