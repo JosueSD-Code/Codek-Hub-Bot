@@ -46,7 +46,7 @@ import {
   import { registerLifecycle } from './handlers/lifecycleHandler.js';
   import { createHelpEmbed } from './utils/help.js';
   
-  import { commands } from './commands.js';
+  import { commands } from './commands/index.js';
   
   const roleIds=(g,v)=>roleIdsByName(g,v);
   const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD')
