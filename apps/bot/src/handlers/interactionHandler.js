@@ -1,4 +1,4 @@
-import { Events } from 'discord.js';
+import { Events, PermissionFlagsBits, ChannelType, ActionRowBuilder, StringSelectMenuBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, ModalBuilder, TextInputBuilder, TextInputStyle } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
   const {
