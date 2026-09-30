@@ -9,7 +9,10 @@ import {
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
-  AttachmentBuilder
+  AttachmentBuilder,
+  ModalBuilder,
+  TextInputBuilder,
+  TextInputStyle
 } from 'discord.js';
 
 export async function handleCommandInteraction(i,{client,prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,isHexColor,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed,cooldowns}){
@@ -395,8 +398,8 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         if(sub==='reclamar'&&!isSupport&&!isAdmin(i))return i.reply(deny('Solo soporte puede reclamar tickets.'));
         if(sub==='reclamar'){const result=await claimTicket(ticket,i.user.id);await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:ticket.userId,categoryId:ticket.categoryId,action:'claimed'}});await audit(i.guildId,i.user.id,'tickets','claimed','ticket:'+ticket.id);await logToChannel(i.guild,'🎫 Ticket reclamado','<@'+i.user.id+'> reclamó el ticket #'+ticket.number+'.','TICKET_CLAIM');return i.reply(deny(result.message))}
         if(sub==='liberar'){if(ticket.claimedById&&ticket.claimedById!==i.user.id&&!isAdmin(i))return i.reply(deny('Solo quien reclamó el ticket o un administrador puede liberarlo.'));await releaseTicket(ticket);return i.reply(deny('Ticket liberado.'))}
-        const managementMember=i.member;const isSupport=Boolean(managementMember?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>managementMember.roles.cache.has(x));
-        if(!isSupport&&!isAdmin(i)&&ticket.userId!==i.user.id)return i.reply(deny('No tienes permisos para gestionar este ticket.'));
+        const managementMember=i.member;const managementIsSupport=Boolean(managementMember?.roles?.cache)&&ticket.category.supportRoleIds.some(x=>managementMember.roles.cache.has(x));
+        if(!managementIsSupport&&!isAdmin(i)&&ticket.userId!==i.user.id)return i.reply(deny('No tienes permisos para gestionar este ticket.'));
         if(sub==='transcript'){if(!ticket.transcript?.html)return i.reply(deny('Este ticket no tiene una transcripción guardada.'));return i.reply({content:'Transcripción del ticket #'+ticket.number,files:[new AttachmentBuilder(Buffer.from(ticket.transcript.html,'utf8'),{name:'ticket-'+ticket.number+'.html'})],flags:64})}
         if(ticket.status==='closed'&&sub!=='reabrir')return i.reply(deny('Este ticket está cerrado.'));
         const channel=i.guild.channels.cache.get(ticket.channelId);
