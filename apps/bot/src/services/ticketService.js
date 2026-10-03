@@ -60,9 +60,31 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
   }
 
   async function deleteOpenTicketsForCategory(guildId,categoryId){
-    const tickets=await prisma.ticket.findMany({where:{guildId,categoryId,status:'open'},select:{id:true,channelId:true}});
-    for(const ticket of tickets){const channel=client.channels.cache.get(ticket.channelId);if(channel?.isTextBased())await channel.delete().catch(e=>logger.warn('Ticket channel delete failed',{error:e.message}))}
-    return tickets.length;
+    const tickets=await prisma.ticket.findMany({where:{guildId,categoryId,status:'open'},include:{category:true,answers:true}});
+    let closedCount=0;
+    for(const ticket of tickets){
+      const channel=client.channels.cache.get(ticket.channelId);
+      const closedAt=new Date();
+      let html=null;
+      if(channel?.isTextBased()){
+        try{html=await transcript(channel,ticket)}catch(e){logger.warn('Ticket transcript before configuration deletion failed',{ticketId:ticket.id,error:e.message})}
+      }
+      try{
+        await prisma.$transaction(async tx=>{
+          const updated=await tx.ticket.updateMany({where:{id:ticket.id,status:'open'},data:{status:'closed',closedAt,closedReason:'Configuración de tickets eliminada',categoryName:ticket.category?.name||ticket.categoryName||'Categoría eliminada'}});
+          if(!updated.count)return false;
+          if(html)await tx.ticketTranscript.upsert({where:{ticketId:ticket.id},update:{html},create:{ticketId:ticket.id,html}});
+          await tx.ticketStats.create({data:{guildId,userId:ticket.userId,staffId:null,categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-ticket.createdAt.getTime())/1000))}});
+          return true;
+        });
+        closedCount++;
+      }catch(e){
+        logger.error('Ticket close before configuration deletion failed',{ticketId:ticket.id,error:e.message});
+        continue;
+      }
+      if(channel)await channel.delete().catch(e=>logger.warn('Ticket channel delete failed',{ticketId:ticket.id,error:e.message}));
+    }
+    return closedCount;
   }
 
   async function createTicket(i,cat,answers=[]){
@@ -70,6 +92,7 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
     if(locks.has(key))return i.reply(deny('Ya se está creando tu ticket.'));
     locks.add(key);
     let ch=null;
+    let createdTicketId=null;
     try{
       if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
       const supportRoleIds=cat.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
@@ -96,9 +119,10 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
           if(old){const error=new Error('TICKET_DUPLICATE');error.channelId=old.channelId;throw error}
           const last=await tx.ticket.findFirst({where:{guildId:i.guildId,categoryId:cat.id},orderBy:{number:'desc'},select:{number:true}});
           n=(last?.number||0)+1;
-          const ticket=await tx.ticket.create({data:{guildId:i.guildId,categoryId:cat.id,userId:i.user.id,channelId:ch.id,number:n,answers:answers.length?{create:answers}:undefined}});
+          const ticket=await tx.ticket.create({data:{guildId:i.guildId,categoryId:cat.id,categoryName:cat.name,userId:i.user.id,channelId:ch.id,number:n,answers:answers.length?{create:answers}:undefined}});
           return {t:ticket,n};
         }));
+        createdTicketId=t.id;
       }catch(e){
         await ch.delete().catch(()=>{});
         if(e.message==='TICKET_DUPLICATE'){const oldChannel=i.guild.channels.cache.get(e.channelId);return i.editReply(deny(oldChannel?'Ya tienes un ticket abierto: '+oldChannel:'Ya tienes un ticket abierto para esta categoría.'))}
@@ -119,6 +143,7 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
       return i.editReply(deny('Ticket creado: '+ch));
     }catch(e){
       logger.error('Ticket creation failed',{error:e.message});
+      if(createdTicketId)await prisma.ticket.delete({where:{id:createdTicketId}}).catch(deleteError=>logger.warn('Ticket rollback failed',{ticketId:createdTicketId,error:deleteError.message}));
       if(ch)await ch.delete().catch(()=>{});
       return (i.replied||i.deferred?i.editReply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.')):i.reply(deny('No se pudo crear el ticket. Revisa los permisos del bot y la configuración de la categoría.'))).catch(()=>{});
     }finally{locks.delete(key)}
@@ -129,7 +154,7 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
     while(true){const batch=await ch.messages.fetch({limit:100,before});if(!batch.size)break;messages.push(...batch.values());if(batch.size<100)break;before=batch.last()?.id;if(!before)break}
     const xs=messages.reverse();const esc=x=>String(x??'').replace(/[&<>"]/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[s]));
     const answers=t.answers?.length?'<h2>Respuestas</h2><ul>'+t.answers.map(a=>'<li><b>'+esc(a.label)+'</b>: '+esc(a.answer)+'</li>').join('')+'</ul>':'';
-    return '<!doctype html><html><head><meta charset="utf-8"><title>Ticket #'+esc(t.number)+'</title></head><body><h1>Ticket #'+esc(t.number)+'</h1><p>Usuario: '+esc(t.user?.tag||t.user?.username||'Usuario')+'<br>Categoría: '+esc(t.category.name)+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+answers+xs.map(m=>{const attachments=[...m.attachments.values()].map(a=>a.url);const content=esc(m.content||'[sin texto]');const files=attachments.length?'<br>Archivos: '+attachments.map(esc).join(' | '):'';return '<p><b>'+esc(m.author?.tag||m.author?.username||'Usuario')+'</b> '+esc(new Date(m.createdTimestamp).toISOString())+'<br>'+content+files+'</p>'}).join('')+'</body></html>';
+    return '<!doctype html><html><head><meta charset="utf-8"><title>Ticket #'+esc(t.number)+'</title></head><body><h1>Ticket #'+esc(t.number)+'</h1><p>Usuario: '+esc(t.user?.tag||t.user?.username||'Usuario')+'<br>Categoría: '+esc(t.category?.name||t.categoryName||'Categoría eliminada')+'<br>Creado: '+esc(t.createdAt.toISOString())+'</p>'+answers+xs.map(m=>{const attachments=[...m.attachments.values()].map(a=>a.url);const content=esc(m.content||'[sin texto]');const files=attachments.length?'<br>Archivos: '+attachments.map(esc).join(' | '):'';return '<p><b>'+esc(m.author?.tag||m.author?.username||'Usuario')+'</b> '+esc(new Date(m.createdTimestamp).toISOString())+'<br>'+content+files+'</p>'}).join('')+'</body></html>';
   }
 
   async function closeTicket(i,t,reason=null){
@@ -138,10 +163,14 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
     if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
     try{
       const html=await transcript(i.channel,t);const closedAt=new Date();
-      const updated=await prisma.ticket.updateMany({where:{id:t.id,status:'open'},data:{status:'closed',closedAt,closedReason:reason}});
-      if(!updated.count)return i.editReply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
-      await prisma.ticketTranscript.upsert({where:{ticketId:t.id},update:{html},create:{ticketId:t.id,html}});
-      await prisma.ticketStats.create({data:{guildId:i.guildId,userId:t.userId,staffId:i.user.id,categoryId:t.categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-t.createdAt.getTime())/1000))}});
+      const updated=await prisma.$transaction(async tx=>{
+        const result=await tx.ticket.updateMany({where:{id:t.id,status:'open'},data:{status:'closed',closedAt,closedReason:reason}});
+        if(!result.count)return false;
+        await tx.ticketTranscript.upsert({where:{ticketId:t.id},update:{html},create:{ticketId:t.id,html}});
+        await tx.ticketStats.create({data:{guildId:i.guildId,userId:t.userId,staffId:i.user.id,categoryId:t.categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-t.createdAt.getTime())/1000))}});
+        return true;
+      });
+      if(!updated)return i.editReply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
       await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
       await logToChannel?.(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.','TICKET_CLOSE');
       const g=await prisma.guild.findUnique({where:{id:i.guildId},select:{logChannelId:true}});const lc=g?.logChannelId?i.guild.channels.cache.get(g.logChannelId):null;
