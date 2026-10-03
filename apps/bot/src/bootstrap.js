@@ -121,7 +121,7 @@ export async function startBot(){
   });
   const presence=createPresenceService(client,prisma);
   const deploy=()=>deployCommands(client,env,commands,logger);
-  const shutdown=registerLifecycle({client,prisma,logger});
+  const shutdown=registerLifecycle({client,prisma,logger,sendConsoleLog});
   const helpEmbed=()=>createHelpEmbed(client);
 
   const {
