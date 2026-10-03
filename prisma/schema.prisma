@@ -80,8 +80,9 @@ model TicketQuestion {
 model Ticket {
   id           String           @id @default(cuid())
   guildId      String
-  categoryId   String
-  category     TicketCategory   @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  categoryId   String?
+  categoryName String?
+  category     TicketCategory?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   userId       String
   channelId    String           @unique
   number       Int
