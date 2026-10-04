@@ -24,8 +24,11 @@ export function registerInteractionHandler(client,deps){
     if(i.isChatInputCommand())return handleCommandInteraction(i,{...deps,client,cooldowns});
   }catch(e){
     logger.error('Interaction error',{error:e.message,stack:e.stack});
-    if(!i.replied&&!i.deferred){
-      await i.reply(deny(handleDiscordError(e))).catch(()=>{});
+    const message=deny(handleDiscordError(e));
+    if(i.deferred){
+      await i.editReply(message).catch(()=>{});
+    }else if(!i.replied){
+      await i.reply(message).catch(()=>{});
     }
   }
   });
