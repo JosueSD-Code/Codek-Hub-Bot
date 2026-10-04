@@ -15,7 +15,7 @@ import {
   TextInputStyle
 } from 'discord.js';
 
-export async function handleCommandInteraction(i,{client,prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,isHexColor,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed,cooldowns}){
+export async function handleCommandInteraction(i,{client,prisma,logger,commands,env,ADMIN,isAdmin,deny,roleIds,clip,safeUrl,isHexColor,color,normalizeEmoji,emojiExists,context,findUniquePanel,findUniqueCategory,deleteOpenTicketsForCategory,createTicket,closeTicket,findTicket,claimTicket,releaseTicket,addTicketUser,removeTicketUser,renameTicket,moveTicket,ticketStats,recordModeration,moderationHistory,parseDuration,processAutoMod,serverStats,botStats,createGiveaway,toggleParticipant,endGiveaway,cancelGiveaway,rerollGiveaway,audit,handleDiscordError,renderVariables,presence,purgeChannelMessages,purgeEverything,helpEmbed,cooldowns}){
   const clean=v=>String(v||'ticket').toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,45)||'ticket';
   function formatUptime(seconds){
     const total=Math.max(0,Math.floor(Number(seconds)||0));
@@ -349,7 +349,14 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       const id=i.options.getString('id');const row=await prisma.giveaway.findFirst({where:{id,guildId:i.guildId}});if(!row)return i.reply(deny('Sorteo no encontrado.'));
       if(sub==='cancel'){const ended=await cancelGiveaway(row);return i.reply(deny(ended?'Sorteo cancelado.':'El sorteo ya había terminado.'))}
       if(sub==='end'){const ended=await endGiveaway(row);if(!ended)return i.reply(deny('El sorteo ya había terminado.'));const channel=i.guild.channels.cache.get(row.channelId);if(channel?.isTextBased())await channel.send('🎉 Ganadores del sorteo **'+row.prize+'**: '+(ended.winnerIds?.map(x=>'<@'+x+'>').join(', ')||'ninguno'));return i.reply(deny('Sorteo finalizado.'))}
-      if(sub==='reroll'){if(!row.ended)return i.reply(deny('El sorteo todavía está activo. Primero finalízalo.'));const pool=[...(row.participants||[])];const winners=[];while(pool.length&&winners.length<row.winners)winners.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);await prisma.giveaway.update({where:{id:row.id},data:{winnerIds:winners}});const channel=i.guild.channels.cache.get(row.channelId);if(channel?.isTextBased())await channel.send('🎉 Nuevos ganadores del sorteo **'+row.prize+'**: '+(winners.map(x=>'<@'+x+'>').join(', ')||'ninguno'));return i.reply(deny('Reroll realizado.'))}
+      if(sub==='reroll'){
+        if(!row.ended)return i.reply(deny('El sorteo todavía está activo. Primero finalízalo.'));
+        const rerolled=await rerollGiveaway(row);
+        if(!rerolled)return i.reply(deny('El sorteo cambió mientras se hacía el reroll. Inténtalo de nuevo.'));
+        const channel=i.guild.channels.cache.get(row.channelId);
+        if(channel?.isTextBased())await channel.send('🎉 Nuevos ganadores del sorteo **'+rerolled.prize+'**: '+(rerolled.winnerIds?.map(x=>'<@'+x+'>').join(', ')||'ninguno'));
+        return i.reply(deny('Reroll realizado.'));
+      }
     }
 
     if(i.isButton()&&i.customId.startsWith('giveaway:join:')){const id=i.customId.split(':')[2];const row=await toggleParticipant(id,i.user.id);if(!row)return i.reply(deny('Este sorteo ya terminó.'));await i.message.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:join:'+row.id).setLabel('🎉 Participar ('+row.participants.length+')').setStyle(ButtonStyle.Success))]}).catch(()=>{});return i.reply(deny(row.participants.includes(i.user.id)?'Participación registrada.':'Has salido del sorteo.'))}
