@@ -7,3 +7,4 @@ npm-debug.log*
 prisma/dev.db
 prisma/*.db
 coverage
+backups/
