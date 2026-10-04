@@ -156,6 +156,13 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
         return i.reply(deny('No tienes permiso para usar /vouch.'));
       }
 
+      const target=await client.users.fetch(targetId).catch(()=>null);
+      const targetMember=target?await i.guild.members.fetch(target.id).catch(()=>null):null;
+      const ch=c.channelId?i.guild.channels.cache.get(c.channelId):null;
+      if(!target||!targetMember||target.bot||!ch?.isTextBased()){
+        return i.reply(deny('El usuario o canal de vouches ya no existe o el usuario no pertenece al servidor.'));
+      }
+
       let createdVouch;
       try{
         createdVouch=await prisma.$transaction(async tx=>{
@@ -198,11 +205,6 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
         if(e?.message==='VOUCH_DUPLICATE'||e?.code==='P2002')return i.reply(deny('Ya has dejado un vouch para este usuario.'));
         throw e;
       }
-
-      const target=await client.users.fetch(targetId).catch(()=>null);
-      const targetMember=target?await i.guild.members.fetch(target.id).catch(()=>null):null;
-      const ch=c.channelId?i.guild.channels.cache.get(c.channelId):null;
-      if(!target||!targetMember||target.bot||!ch?.isTextBased())return i.reply(deny('El usuario o canal de vouches ya no existe o el usuario no pertenece al servidor.'));
 
       const x=context(target,i.guild,ch,{
         target:target.toString(),
