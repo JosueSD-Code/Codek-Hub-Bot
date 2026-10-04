@@ -44,3 +44,12 @@ export async function cancel(row){
     return tx.giveaway.update({where:{id:current.id},data:{ended:true,winnerIds:[]}});
   });
 }
+
+export async function reroll(row){
+  return withGiveawayLock(row.id,async tx=>{
+    const current=await tx.giveaway.findUnique({where:{id:row.id}});
+    if(!current||!current.ended)return null;
+    const winnerIds=choose(current);
+    return tx.giveaway.update({where:{id:current.id},data:{winnerIds}});
+  });
+}
