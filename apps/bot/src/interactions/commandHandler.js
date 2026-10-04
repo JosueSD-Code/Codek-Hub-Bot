@@ -323,7 +323,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
 
     if(i.commandName==='logs'){
       const sub=i.options.getSubcommand();
-      if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','ROLE_UPDATE','CHANNEL_CREATE,'CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
+      if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','ROLE_UPDATE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
       if(sub==='disable'){await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});await prisma.logConfig.deleteMany({where:{guildId:i.guildId}});return i.reply(deny('📋 Logs desactivados.'))}
       const row=await prisma.logConfig.findUnique({where:{guildId:i.guildId}});return i.reply(deny(row?'📋 Logs activos en <#'+row.channelId+'>.':'📋 Logs desactivados.'));
     }
@@ -625,7 +625,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       if(sub==='log'){
         const ch=i.options.getChannel('canal');
         if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
-        const events=['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND'];
+        const events=['MESSAGE_DELETE','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','MESSAGE_EDIT','ROLE_CREATE','ROLE_DELETE','ROLE_UPDATE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND'];
         await prisma.$transaction([
           prisma.guild.update({where:{id:i.guildId},data:{logChannelId:ch.id}}),
           prisma.logConfig.upsert({
