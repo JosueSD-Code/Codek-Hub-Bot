@@ -27,7 +27,11 @@ export async function claim(ticket,userId){
 }
 
 export async function release(ticket){
-  await prisma.ticket.update({where:{id:ticket.id},data:{claimedById:null,claimedAt:null}});
+  const updated=await prisma.ticket.updateMany({
+    where:{id:ticket.id,status:'open'},
+    data:{claimedById:null,claimedAt:null}
+  });
+  if(!updated.count)throw new Error('El ticket está cerrado o ya no existe.');
   return {message:'Ticket liberado correctamente.'};
 }
 
