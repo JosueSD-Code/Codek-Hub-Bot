@@ -391,13 +391,26 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       const staffSubs=new Set(['reclamar','liberar','adduser','removeuser','cerrar','reabrir','renombrar','mover','prioridad','stats','transcript']);
       if(staffSubs.has(sub)){
         if(sub==='stats'){if(!isAdmin(i)&&!i.member?.roles?.cache?.some(role=>role.permissions?.has?.(PermissionFlagsBits.ManageChannels)))return i.reply(deny('Solo el staff puede consultar estas estadísticas.'));const st=await ticketStats(i.guildId);const avg=st.averageResolutionSeconds?Math.round(st.averageResolutionSeconds/60)+' min':'N/D';const staff=st.topStaff.slice(0,5).map((x,n)=>((n+1)+'. <@'+x.staffId+'> — '+x._count.staffId)).join('\n')||'N/D';const users=st.topUsers.slice(0,5).map((x,n)=>((n+1)+'. <@'+x.userId+'> — '+x._count.userId)).join('\n')||'N/D';return i.reply({embeds:[new EmbedBuilder().setTitle('🎫 Estadísticas de tickets').addFields({name:'Abiertos',value:String(st.open),inline:true},{name:'Cerrados',value:String(st.closed),inline:true},{name:'Reclamos',value:String(st.claims),inline:true},{name:'Resolución promedio',value:avg,inline:true},{name:'Top staff',value:staff},{name:'Top usuarios',value:users},{name:'Categorías',value:st.categories.map(c=>c.name+': '+c._count.tickets).join('\n')||'N/D'}).setColor(0x5865F2)],flags:64})}
-        const ticket=await findTicket(i.guildId,i.options.getString('ticket'));
+        let ticket;
+        try{
+          ticket=await findTicket(i.guildId,i.options.getString('ticket'));
+        }catch(e){
+          if(e?.message==='TICKET_AMBIGUOUS'){
+            return i.reply(deny('El identificador coincide con varios tickets. Usa el **ID del ticket** o el **canal del ticket** para identificarlo sin ambigüedad.'));
+          }
+          throw e;
+        }
         if(!ticket)return i.reply(deny('Ticket no encontrado.'));
         const member=i.member;
         const isSupport=Boolean(member?.roles?.cache)&&Boolean(ticket.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
         if(sub==='reclamar'&&!isSupport&&!isAdmin(i))return i.reply(deny('Solo soporte puede reclamar tickets.'));
         if(sub==='reclamar'){const result=await claimTicket(ticket,i.user.id);await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:ticket.userId,categoryId:ticket.categoryId,action:'claimed'}});await audit(i.guildId,i.user.id,'tickets','claimed','ticket:'+ticket.id);await logToChannel(i.guild,'🎫 Ticket reclamado','<@'+i.user.id+'> reclamó el ticket #'+ticket.number+'.','TICKET_CLAIM');return i.reply(deny(result.message))}
-        if(sub==='liberar'){if(ticket.claimedById&&ticket.claimedById!==i.user.id&&!isAdmin(i))return i.reply(deny('Solo quien reclamó el ticket o un administrador puede liberarlo.'));await releaseTicket(ticket);return i.reply(deny('Ticket liberado.'))}
+        if(sub==='liberar'){
+          if(ticket.status!=='open')return i.reply(deny('Este ticket está cerrado.'));
+          if(ticket.claimedById&&ticket.claimedById!==i.user.id&&!isAdmin(i))return i.reply(deny('Solo quien reclamó el ticket o un administrador puede liberarlo.'));
+          await releaseTicket(ticket);
+          return i.reply(deny('Ticket liberado.'));
+        }
         const managementMember=i.member;const managementIsSupport=Boolean(managementMember?.roles?.cache)&&Boolean(ticket.category?.supportRoleIds?.some(x=>managementMember.roles.cache.has(x)));
         if(!managementIsSupport&&!isAdmin(i)&&ticket.userId!==i.user.id)return i.reply(deny('No tienes permisos para gestionar este ticket.'));
         if(sub==='transcript'){if(!ticket.transcript?.html)return i.reply(deny('Este ticket no tiene una transcripción guardada.'));return i.reply({content:'Transcripción del ticket #'+ticket.number,files:[new AttachmentBuilder(Buffer.from(ticket.transcript.html,'utf8'),{name:'ticket-'+ticket.number+'.html'})],flags:64})}
@@ -410,12 +423,35 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
           if(!ticket.category)return i.reply(deny('La categoría original de este ticket ya fue eliminada. No se puede reabrir automáticamente; crea una nueva categoría y un nuevo ticket.'));
           const supportRoleIds=ticket.category.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
           if(!supportRoleIds.length)return i.reply(deny('La categoría ya no tiene roles de soporte válidos.'));
-          const reopened=await i.guild.channels.create({name:clip(clean(ticket.category.name)+'-'+ticket.number,95),type:ChannelType.GuildText,parent:ticket.category.discordCategoryId&&i.guild.channels.cache.has(ticket.category.discordCategoryId)?ticket.category.discordCategoryId:undefined,permissionOverwrites:[{id:i.guild.roles.everyone.id,deny:['ViewChannel']},{id:ticket.userId,allow:['ViewChannel','SendMessages','ReadMessageHistory']},...supportRoleIds.map(id=>({id,allow:['ViewChannel','SendMessages','ReadMessageHistory']}))]});
-          await prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null,claimedAt:null}});
-          await prisma.ticketStats.create({data:{guildId:i.guildId,userId:ticket.userId,categoryId:ticket.categoryId,action:'reopened'}});
-          await audit(i.guildId,i.user.id,'tickets','reopened','#'+ticket.number);
-          await reopened.send({embeds:[new EmbedBuilder().setTitle('🔓 Ticket reabierto').setDescription('Ticket reabierto por '+i.user.toString()+'.').setColor(0x57F287)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('ticket:claim:'+ticket.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),new ButtonBuilder().setCustomId('ticket:close:'+ticket.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger))]});
-          return i.reply(deny('Ticket reabierto en '+reopened.toString()+'.'));
+          let reopened;
+          try{
+            reopened=await i.guild.channels.create({
+              name:clip(clean(ticket.category.name)+'-'+ticket.number,95),
+              type:ChannelType.GuildText,
+              parent:ticket.category.discordCategoryId&&i.guild.channels.cache.has(ticket.category.discordCategoryId)?ticket.category.discordCategoryId:undefined,
+              permissionOverwrites:[
+                {id:i.guild.roles.everyone.id,deny:['ViewChannel']},
+                {id:ticket.userId,allow:['ViewChannel','SendMessages','ReadMessageHistory']},
+                ...supportRoleIds.map(id=>({id,allow:['ViewChannel','SendMessages','ReadMessageHistory']}))
+              ]
+            });
+            await prisma.$transaction([
+              prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null,claimedAt:null}}),
+              prisma.ticketStats.create({data:{guildId:i.guildId,userId:ticket.userId,categoryId:ticket.categoryId,action:'reopened'}})
+            ]);
+            await audit(i.guildId,i.user.id,'tickets','reopened','#'+ticket.number);
+            await reopened.send({
+              embeds:[new EmbedBuilder().setTitle('🔓 Ticket reabierto').setDescription('Ticket reabierto por '+i.user.toString()+'.').setColor(0x57F287)],
+              components:[new ActionRowBuilder().addComponents(
+                new ButtonBuilder().setCustomId('ticket:claim:'+ticket.id).setLabel('Reclamar').setStyle(ButtonStyle.Primary),
+                new ButtonBuilder().setCustomId('ticket:close:'+ticket.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger)
+              )]
+            });
+            return i.reply(deny('Ticket reabierto en '+reopened.toString()+'.'));
+          }catch(e){
+            if(reopened)await reopened.delete().catch(()=>{});
+            throw e;
+          }
         }
         if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));
         if(sub==='renombrar'){await renameTicket(channel,i.options.getString('nombre'));return i.reply(deny('Ticket renombrado.'))}
@@ -425,7 +461,10 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
 
       if(sub==='log-reset'){
-        await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});
+        await prisma.$transaction([
+          prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}}),
+          prisma.logConfig.deleteMany({where:{guildId:i.guildId}})
+        ]);
         await audit(i.guildId,i.user.id,'tickets','log_reset','Configuración de logs eliminada.');
         return i.reply(deny('Configuración de logs eliminada.'));
       }
@@ -579,7 +618,15 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       if(sub==='log'){
         const ch=i.options.getChannel('canal');
         if(!ch?.isTextBased())return i.reply(deny('El canal indicado no es válido.'));
-        await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:ch.id}});
+        const events=['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND'];
+        await prisma.$transaction([
+          prisma.guild.update({where:{id:i.guildId},data:{logChannelId:ch.id}}),
+          prisma.logConfig.upsert({
+            where:{guildId:i.guildId},
+            update:{channelId:ch.id,events},
+            create:{guildId:i.guildId,channelId:ch.id,events}
+          })
+        ]);
         await audit(i.guildId,i.user.id,'tickets','log_channel',ch.name);
         return i.reply(deny('Canal de logs configurado.'));
       }
