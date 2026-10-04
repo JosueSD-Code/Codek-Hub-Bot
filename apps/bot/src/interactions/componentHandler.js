@@ -113,7 +113,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       if(!t)return i.reply(deny('Ticket no encontrado.'));
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
       const member=i.member;
-      const isSupport=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
+      const isSupport=Boolean(member?.roles?.cache)&&Boolean(t.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
       if(i.user.id!==t.userId&&!isSupport)return i.reply(deny('No tienes permiso para cerrar este ticket.'));
       return closeTicket(i,t);
     }
