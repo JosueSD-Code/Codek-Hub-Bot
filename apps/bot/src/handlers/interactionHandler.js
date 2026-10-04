@@ -4,7 +4,7 @@ import { handleCommandInteraction } from '../interactions/commandHandler.js';
 import { Events } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
-  const {prisma,logger,deny,clip,safeUrl,color,context,audit,createTicket,closeTicket,handleDiscordError}=deps;
+  const {prisma,logger,deny,clip,safeUrl,color,context,audit,createTicket,closeTicket,handleDiscordError,renderVariables}=deps;
   const cooldowns=new Map();
 
   client.on(Events.InteractionCreate,async i=>{
