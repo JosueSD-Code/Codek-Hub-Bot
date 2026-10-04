@@ -25,6 +25,17 @@ async function main() {
     return;
   }
 
+  try {
+    const url = new URL(process.env.DATABASE_URL);
+    if (['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
+      console.warn('DATABASE_URL points to localhost; GitHub Actions cannot reach a local database. Skipping live database check.');
+      return;
+    }
+  } catch {
+    console.warn('DATABASE_URL is not a valid URL in this workflow; skipping live database check.');
+    return;
+  }
+
   const ticketCategoryName = await columnExists('Ticket', 'categoryName');
   const ticketCategoryIdNullable = await prisma.$queryRawUnsafe(
     'SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'Ticket\' AND column_name = \'categoryId\''
