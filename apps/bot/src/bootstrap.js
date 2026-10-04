@@ -31,7 +31,8 @@ import {
   create as createGiveaway,
   toggleParticipant,
   end as endGiveaway,
-  cancel as cancelGiveaway
+  cancel as cancelGiveaway,
+  reroll as rerollGiveaway
 } from './services/giveawayService.js';
 import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
 import { registerInteractionHandler } from './handlers/interactionHandler.js';
@@ -171,6 +172,7 @@ export async function startBot(){
     toggleParticipant,
     endGiveaway,
     cancelGiveaway,
+    rerollGiveaway,
     audit,
     handleDiscordError,
     renderVariables,
