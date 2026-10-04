@@ -107,7 +107,7 @@ export function register(client,{prisma,endGiveaway,configureDiscordLogger,sendC
 
   client.once(Events.ClientReady,async c=>{
     try{
-      await prisma.$queryRaw\`SELECT 1\`;
+      await prisma.$queryRaw`SELECT 1`;
       for(const guild of c.guilds.cache.values())await ensureGuild(guild);
       await deploy();
       await presence();
