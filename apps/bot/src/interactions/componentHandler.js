@@ -125,10 +125,17 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
         include:{questions:true}
       });
       if(!c)return i.reply(deny('Categoría no encontrada.'));
-      const a=c.questions.slice(0,5).map(q=>({
-        label:q.label,
-        answer:i.fields.getTextInputValue(q.id)
-      }));
+      const questions=c.questions.slice(0,5);
+      const a=[];
+      for(const q of questions){
+        const field=i.fields.fields.get(q.id);
+        if(!field&&q.required){
+          return i.reply(deny('El formulario cambió mientras respondías. Vuelve a abrir el formulario para continuar.'));
+        }
+        if(field){
+          a.push({label:q.label,answer:String(field.value??'').trim()});
+        }
+      }
       return createTicket(i,c,a);
     }
 
