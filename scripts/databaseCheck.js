@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -21,7 +22,7 @@ async function columnExists(tableName, columnName) {
 
 async function main() {
   if (!process.env.DATABASE_URL) {
-    console.warn('DATABASE_URL is not configured in this workflow; skipping live database check.');
+    console.warn('DATABASE_URL is not configured; skipping live database check.');
     return;
   }
 
@@ -32,7 +33,7 @@ async function main() {
       return;
     }
   } catch {
-    console.warn('DATABASE_URL is not a valid URL in this workflow; skipping live database check.');
+    console.warn('DATABASE_URL is not a valid URL; skipping live database check.');
     return;
   }
 
