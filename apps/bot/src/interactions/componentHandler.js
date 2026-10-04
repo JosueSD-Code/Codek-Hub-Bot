@@ -9,7 +9,27 @@ import {
   TextInputStyle
 } from 'discord.js';
 
-export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns}){
+export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant}){
+    if(i.isButton()&&i.customId.startsWith('giveaway:join:')){
+      const id=i.customId.split(':')[2];
+      await i.deferUpdate();
+      const row=await toggleParticipant(id,i.user.id,i.guildId,i.message?.id);
+      if(!row){
+        await i.editReply({content:'Este sorteo ya terminó o el botón ya no es válido.',components:[]}).catch(()=>{});
+        return true;
+      }
+      await i.message.edit({
+        components:[new ActionRowBuilder().addComponents(
+          new ButtonBuilder()
+            .setCustomId('giveaway:join:'+row.id)
+            .setLabel('🎉 Participar ('+row.participants.length+')')
+            .setStyle(ButtonStyle.Success)
+        )]
+      });
+      await i.followUp(deny(row.participants.includes(i.user.id)?'Participación registrada.':'Has salido del sorteo.')).catch(()=>{});
+      return true;
+    }
+
     if(i.isStringSelectMenu()&&i.customId.startsWith('ticket:select:')){
       const categoryId=i.values[0];
       const c=await prisma.ticketCategory.findFirst({
