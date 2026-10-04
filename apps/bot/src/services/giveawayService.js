@@ -11,9 +11,10 @@ async function withGiveawayLock(id,work){
   });
 }
 
-export async function toggleParticipant(id,userId){
+export async function toggleParticipant(id,userId,guildId,messageId=null){
   return withGiveawayLock(id,async tx=>{
-    const row=await tx.giveaway.findUnique({where:{id}});
+    const row=await tx.giveaway.findFirst({where:{id,guildId}});
+    if(messageId&&row?.messageId!==messageId)return null;
     if(!row||row.ended)return null;
     const participants=new Set(row.participants||[]);
     if(participants.has(userId))participants.delete(userId);else participants.add(userId);
@@ -30,7 +31,7 @@ export function choose(row){
 
 export async function end(row){
   return withGiveawayLock(row.id,async tx=>{
-    const current=await tx.giveaway.findUnique({where:{id:row.id}});
+    const current=await tx.giveaway.findFirst({where:{id:row.id,guildId:row.guildId}});
     if(!current||current.ended)return null;
     const winnerIds=choose(current);
     return tx.giveaway.update({where:{id:current.id},data:{ended:true,winnerIds}});
@@ -39,7 +40,7 @@ export async function end(row){
 
 export async function cancel(row){
   return withGiveawayLock(row.id,async tx=>{
-    const current=await tx.giveaway.findUnique({where:{id:row.id}});
+    const current=await tx.giveaway.findFirst({where:{id:row.id,guildId:row.guildId}});
     if(!current||current.ended)return null;
     return tx.giveaway.update({where:{id:current.id},data:{ended:true,winnerIds:[]}});
   });
@@ -47,7 +48,7 @@ export async function cancel(row){
 
 export async function reroll(row){
   return withGiveawayLock(row.id,async tx=>{
-    const current=await tx.giveaway.findUnique({where:{id:row.id}});
+    const current=await tx.giveaway.findFirst({where:{id:row.id,guildId:row.guildId}});
     if(!current||!current.ended)return null;
     const winnerIds=choose(current);
     return tx.giveaway.update({where:{id:current.id},data:{winnerIds}});
