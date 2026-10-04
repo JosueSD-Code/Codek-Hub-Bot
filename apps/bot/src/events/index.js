@@ -13,6 +13,7 @@ import { register as registerChannelDelete } from './channelDelete.js';
 import { register as registerChannelUpdate } from './channelUpdate.js';
 import { register as registerRoleCreate } from './roleCreate.js';
 import { register as registerRoleDelete } from './roleDelete.js';
+import { register as registerRoleUpdate } from './roleUpdate.js';
 
 const registrations=[
   registerReady,
@@ -29,7 +30,8 @@ const registrations=[
   registerChannelDelete,
   registerChannelUpdate,
   registerRoleCreate,
-  registerRoleDelete
+  registerRoleDelete,
+  registerRoleUpdate
 ];
 
 export function registerEvents(client,deps){
