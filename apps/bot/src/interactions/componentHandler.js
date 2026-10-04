@@ -156,20 +156,48 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
         return i.reply(deny('No tienes permiso para usar /vouch.'));
       }
 
-      const dbLast=await prisma.vouch.findFirst({
-        where:{guildId:i.guildId,reviewerId:i.user.id},
-        orderBy:{createdAt:'desc'},
-        select:{createdAt:true}
-      });
-      if(dbLast&&Date.now()-dbLast.createdAt.getTime()<c.cooldown*1000)return i.reply(deny('Espera antes de enviar otro vouch.'));
-      const dayStart=new Date(Date.now()-24*60*60*1000);
-      const dailyCount=await prisma.vouch.count({where:{guildId:i.guildId,reviewerId:i.user.id,createdAt:{gte:dayStart}}});
-      if(dailyCount>=10)return i.reply(deny('Has alcanzado el límite de **10 vouches por día**.'));
+      let createdVouch;
+      try{
+        createdVouch=await prisma.$transaction(async tx=>{
+          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'codek:vouch:'+i.guildId+':'+i.user.id}))`;
 
-      const duplicate=await prisma.vouch.findFirst({
-        where:{guildId:i.guildId,targetId,reviewerId:i.user.id}
-      });
-      if(duplicate)return i.reply(deny('Ya has dejado un vouch para este usuario.'));
+          const dbLast=await tx.vouch.findFirst({
+            where:{guildId:i.guildId,reviewerId:i.user.id},
+            orderBy:{createdAt:'desc'},
+            select:{createdAt:true}
+          });
+          if(dbLast&&Date.now()-dbLast.createdAt.getTime()<c.cooldown*1000){
+            throw new Error('VOUCH_COOLDOWN');
+          }
+
+          const dayStart=new Date(Date.now()-24*60*60*1000);
+          const dailyCount=await tx.vouch.count({
+            where:{guildId:i.guildId,reviewerId:i.user.id,createdAt:{gte:dayStart}}
+          });
+          if(dailyCount>=10)throw new Error('VOUCH_DAILY_LIMIT');
+
+          const duplicate=await tx.vouch.findFirst({
+            where:{guildId:i.guildId,targetId,reviewerId:i.user.id}
+          });
+          if(duplicate)throw new Error('VOUCH_DUPLICATE');
+
+          return tx.vouch.create({
+            data:{
+              guildId:i.guildId,
+              targetId,
+              reviewerId:i.user.id,
+              reviewType:type,
+              rating,
+              text
+            }
+          });
+        });
+      }catch(e){
+        if(e?.message==='VOUCH_COOLDOWN')return i.reply(deny('Espera antes de enviar otro vouch.'));
+        if(e?.message==='VOUCH_DAILY_LIMIT')return i.reply(deny('Has alcanzado el límite de **10 vouches por día**.'));
+        if(e?.message==='VOUCH_DUPLICATE'||e?.code==='P2002')return i.reply(deny('Ya has dejado un vouch para este usuario.'));
+        throw e;
+      }
 
       const target=await client.users.fetch(targetId).catch(()=>null);
       const targetMember=target?await i.guild.members.fetch(target.id).catch(()=>null):null;
