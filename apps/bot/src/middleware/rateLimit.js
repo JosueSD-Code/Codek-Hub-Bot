@@ -16,6 +16,10 @@ export function applyCooldown(userId,commandName,seconds=0){
       if(expiry<=now)cooldowns.delete(entry);
       if(cooldowns.size<MAX_COOLDOWNS)break;
     }
+    if(cooldowns.size>=MAX_COOLDOWNS){
+      const oldest=cooldowns.keys().next().value;
+      if(oldest)cooldowns.delete(oldest);
+    }
   }
   cooldowns.set(key,until);
   setTimeout(()=>{
