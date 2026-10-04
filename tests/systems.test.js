@@ -28,6 +28,20 @@ test('el registro de comandos se serializa sin duplicados',()=>{
   assert.ok(json.some(command=>command.name==='giveaway'));
 });
 
+test('las opciones requeridas preceden a las opcionales en todos los subcomandos',()=>{
+  for(const command of commands){
+    const json=command.toJSON();
+    for(const subcommand of (json.options||[])){
+      if(!Array.isArray(subcommand.options))continue;
+      let optionalSeen=false;
+      for(const option of subcommand.options){
+        if(option.required)assert.equal(optionalSeen,false,`${command.name}/${subcommand.name}: una opción requerida aparece después de una opcional (${option.name})`);
+        else optionalSeen=true;
+      }
+    }
+  }
+});
+
 test('parseDuration rechaza overflow numérico',()=>{
   assert.equal(parseDuration('999999999999999999999999w'),null);
 });
