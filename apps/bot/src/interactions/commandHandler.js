@@ -371,25 +371,273 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
 
     if(i.commandName==='backup'&&i.options.getSubcommand()==='restore'){
       if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la restauración con confirmar: true.'));
-      const dir=path.join(process.cwd(),'backups');const file=i.options.getString('archivo');
-      if(path.basename(file)!==file||!file.startsWith('guild-'+i.guildId+'-')||!file.endsWith('.json'))return i.reply(deny('Archivo de backup no válido para este servidor.'));
-      const backup=JSON.parse(await readFile(path.join(dir,file),'utf8'));
-      if(backup?.id!==i.guildId)return i.reply(deny('El backup no pertenece a este servidor.'));
-      if(backup.welcomeConfig)await prisma.welcomeConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.welcomeConfig.enabled,channelId:backup.welcomeConfig.channelId,message:backup.welcomeConfig.message,title:backup.welcomeConfig.title,description:backup.welcomeConfig.description,color:backup.welcomeConfig.color,image:backup.welcomeConfig.image,thumbnail:backup.welcomeConfig.thumbnail,footer:backup.welcomeConfig.footer,goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,goodbyeMessage:backup.welcomeConfig.goodbyeMessage},create:{guildId:i.guildId,enabled:backup.welcomeConfig.enabled,channelId:backup.welcomeConfig.channelId,message:backup.welcomeConfig.message,title:backup.welcomeConfig.title,description:backup.welcomeConfig.description,color:backup.welcomeConfig.color,image:backup.welcomeConfig.image,thumbnail:backup.welcomeConfig.thumbnail,footer:backup.welcomeConfig.footer,goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,goodbyeMessage:backup.welcomeConfig.goodbyeMessage}});
-      if(backup.vouchConfig)await prisma.vouchConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.vouchConfig.enabled,channelId:backup.vouchConfig.channelId,allowedRoleIds:backup.vouchConfig.allowedRoleIds,cooldown:backup.vouchConfig.cooldown,title:backup.vouchConfig.title,description:backup.vouchConfig.description,color:backup.vouchConfig.color,image:backup.vouchConfig.image,thumbnail:backup.vouchConfig.thumbnail,footer:backup.vouchConfig.footer},create:{guildId:i.guildId,enabled:backup.vouchConfig.enabled,channelId:backup.vouchConfig.channelId,allowedRoleIds:backup.vouchConfig.allowedRoleIds,cooldown:backup.vouchConfig.cooldown,title:backup.vouchConfig.title,description:backup.vouchConfig.description,color:backup.vouchConfig.color,image:backup.vouchConfig.image,thumbnail:backup.vouchConfig.thumbnail,footer:backup.vouchConfig.footer}});
-      if(backup.presenceConfig)await prisma.presenceConfig.upsert({where:{guildId:i.guildId},update:{enabled:backup.presenceConfig.enabled,type:backup.presenceConfig.type,text:backup.presenceConfig.text},create:{guildId:i.guildId,enabled:backup.presenceConfig.enabled,type:backup.presenceConfig.type,text:backup.presenceConfig.text}});
-      if(backup.logConfig)await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:backup.logConfig.channelId,events:backup.logConfig.events},create:{guildId:i.guildId,channelId:backup.logConfig.channelId,events:backup.logConfig.events}});
-      for(const row of backup.autoResponders||[])await prisma.autoResponder.upsert({where:{id:row.id},update:{trigger:row.trigger,response:row.response,matchType:row.matchType,embedTitle:row.embedTitle,embedDescription:row.embedDescription,embedColor:row.embedColor,enabled:row.enabled},create:{id:row.id,guildId:i.guildId,trigger:row.trigger,response:row.response,matchType:row.matchType||'contains',embedTitle:row.embedTitle,embedDescription:row.embedDescription,embedColor:row.embedColor,enabled:row.enabled!==false}});
-      for(const row of backup.autoModRules||[])await prisma.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:row.type}},update:{enabled:row.enabled,action:row.action,threshold:row.threshold,durationSeconds:row.durationSeconds??null,whitelist:row.whitelist||[],exceptions:row.exceptions||[]},create:{guildId:i.guildId,type:row.type,enabled:row.enabled,action:row.action,threshold:row.threshold,durationSeconds:row.durationSeconds??null,whitelist:row.whitelist||[],exceptions:row.exceptions||[]}});
-      for(const panel of backup.panels||[]){
-        const restored=await prisma.ticketPanel.upsert({where:{guildId_name:{guildId:i.guildId,name:panel.name}},update:{channelId:panel.channelId,title:panel.title,description:panel.description,color:panel.color,image:panel.image,thumbnail:panel.thumbnail,footer:panel.footer,active:panel.active},create:{guildId:i.guildId,name:panel.name,channelId:panel.channelId,title:panel.title,description:panel.description,color:panel.color,image:panel.image,thumbnail:panel.thumbnail,footer:panel.footer,active:panel.active}});
-        for(const category of panel.categories||[]){
-          const restoredCategory=await prisma.ticketCategory.upsert({where:{panelId_name:{panelId:restored.id,name:category.name}},update:{description:category.description,emoji:category.emoji,supportRoleIds:category.supportRoleIds,discordCategoryId:category.discordCategoryId},create:{panelId:restored.id,name:category.name,description:category.description,emoji:category.emoji,supportRoleIds:category.supportRoleIds,discordCategoryId:category.discordCategoryId}});
-          for(const question of category.questions||[])await prisma.ticketQuestion.upsert({where:{categoryId_label:{categoryId:restoredCategory.id,label:question.label}},update:{placeholder:question.placeholder,required:question.required},create:{categoryId:restoredCategory.id,label:question.label,placeholder:question.placeholder,required:question.required}});
-        }
+      const dir=path.join(process.cwd(),'backups');
+      const file=i.options.getString('archivo');
+      if(path.basename(file)!==file||!file.startsWith('guild-'+i.guildId+'-')||!file.endsWith('.json')){
+        return i.reply(deny('Archivo de backup no válido para este servidor.'));
       }
-      await audit(i.guildId,i.user.id,'backup','restore',file);
-      return i.reply(deny('💾 Backup restaurado. Los tickets históricos no fueron modificados.'));
+
+      let backup;
+      try{
+        backup=JSON.parse(await readFile(path.join(dir,file),'utf8'));
+      }catch(e){
+        logger.error('Backup read failed',{error:e.message,file});
+        return i.reply(deny('No se pudo leer el backup indicado.'));
+      }
+
+      const isObject=value=>value&&typeof value==='object'&&!Array.isArray(value);
+      if(!isObject(backup)||backup.id!==i.guildId){
+        return i.reply(deny('El backup no pertenece a este servidor o tiene un formato inválido.'));
+      }
+      if(backup.panels!==undefined&&!Array.isArray(backup.panels)){
+        return i.reply(deny('El backup tiene un formato inválido: paneles.'));
+      }
+      if(backup.autoResponders!==undefined&&!Array.isArray(backup.autoResponders)){
+        return i.reply(deny('El backup tiene un formato inválido: autoresponders.'));
+      }
+      if(backup.autoModRules!==undefined&&!Array.isArray(backup.autoModRules)){
+        return i.reply(deny('El backup tiene un formato inválido: reglas AutoMod.'));
+      }
+
+      try{
+        await prisma.$transaction(async tx=>{
+          if(backup.welcomeConfig){
+            await tx.welcomeConfig.upsert({
+              where:{guildId:i.guildId},
+              update:{
+                enabled:backup.welcomeConfig.enabled,
+                channelId:backup.welcomeConfig.channelId,
+                message:backup.welcomeConfig.message,
+                title:backup.welcomeConfig.title,
+                description:backup.welcomeConfig.description,
+                color:backup.welcomeConfig.color,
+                image:backup.welcomeConfig.image,
+                thumbnail:backup.welcomeConfig.thumbnail,
+                footer:backup.welcomeConfig.footer,
+                goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,
+                goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,
+                goodbyeMessage:backup.welcomeConfig.goodbyeMessage
+              },
+              create:{
+                guildId:i.guildId,
+                enabled:backup.welcomeConfig.enabled,
+                channelId:backup.welcomeConfig.channelId,
+                message:backup.welcomeConfig.message,
+                title:backup.welcomeConfig.title,
+                description:backup.welcomeConfig.description,
+                color:backup.welcomeConfig.color,
+                image:backup.welcomeConfig.image,
+                thumbnail:backup.welcomeConfig.thumbnail,
+                footer:backup.welcomeConfig.footer,
+                goodbyeEnabled:backup.welcomeConfig.goodbyeEnabled,
+                goodbyeChannelId:backup.welcomeConfig.goodbyeChannelId,
+                goodbyeMessage:backup.welcomeConfig.goodbyeMessage
+              }
+            });
+          }
+
+          if(backup.vouchConfig){
+            await tx.vouchConfig.upsert({
+              where:{guildId:i.guildId},
+              update:{
+                enabled:backup.vouchConfig.enabled,
+                channelId:backup.vouchConfig.channelId,
+                allowedRoleIds:backup.vouchConfig.allowedRoleIds,
+                cooldown:backup.vouchConfig.cooldown,
+                title:backup.vouchConfig.title,
+                description:backup.vouchConfig.description,
+                color:backup.vouchConfig.color,
+                image:backup.vouchConfig.image,
+                thumbnail:backup.vouchConfig.thumbnail,
+                footer:backup.vouchConfig.footer
+              },
+              create:{
+                guildId:i.guildId,
+                enabled:backup.vouchConfig.enabled,
+                channelId:backup.vouchConfig.channelId,
+                allowedRoleIds:backup.vouchConfig.allowedRoleIds,
+                cooldown:backup.vouchConfig.cooldown,
+                title:backup.vouchConfig.title,
+                description:backup.vouchConfig.description,
+                color:backup.vouchConfig.color,
+                image:backup.vouchConfig.image,
+                thumbnail:backup.vouchConfig.thumbnail,
+                footer:backup.vouchConfig.footer
+              }
+            });
+          }
+
+          if(backup.presenceConfig){
+            await tx.presenceConfig.upsert({
+              where:{guildId:i.guildId},
+              update:{
+                enabled:backup.presenceConfig.enabled,
+                type:backup.presenceConfig.type,
+                text:backup.presenceConfig.text
+              },
+              create:{
+                guildId:i.guildId,
+                enabled:backup.presenceConfig.enabled,
+                type:backup.presenceConfig.type,
+                text:backup.presenceConfig.text
+              }
+            });
+          }
+
+          if(backup.logConfig){
+            await tx.logConfig.upsert({
+              where:{guildId:i.guildId},
+              update:{
+                channelId:backup.logConfig.channelId,
+                events:backup.logConfig.events
+              },
+              create:{
+                guildId:i.guildId,
+                channelId:backup.logConfig.channelId,
+                events:backup.logConfig.events
+              }
+            });
+          }
+
+          for(const row of backup.autoResponders||[]){
+            if(!isObject(row)||typeof row.trigger!=='string'||typeof row.response!=='string'){
+              throw new Error('BACKUP_INVALID_AUTORESPONDER');
+            }
+            await tx.autoResponder.upsert({
+              where:{id:row.id},
+              update:{
+                trigger:row.trigger,
+                response:row.response,
+                matchType:row.matchType,
+                embedTitle:row.embedTitle,
+                embedDescription:row.embedDescription,
+                embedColor:row.embedColor,
+                enabled:row.enabled
+              },
+              create:{
+                id:row.id,
+                guildId:i.guildId,
+                trigger:row.trigger,
+                response:row.response,
+                matchType:row.matchType||'contains',
+                embedTitle:row.embedTitle,
+                embedDescription:row.embedDescription,
+                embedColor:row.embedColor,
+                enabled:row.enabled!==false
+              }
+            });
+          }
+
+          for(const row of backup.autoModRules||[]){
+            if(!isObject(row)||typeof row.type!=='string'){
+              throw new Error('BACKUP_INVALID_AUTOMOD');
+            }
+            await tx.autoModRule.upsert({
+              where:{guildId_type:{guildId:i.guildId,type:row.type}},
+              update:{
+                enabled:row.enabled,
+                action:row.action,
+                threshold:row.threshold,
+                durationSeconds:row.durationSeconds??null,
+                whitelist:Array.isArray(row.whitelist)?row.whitelist:[],
+                exceptions:Array.isArray(row.exceptions)?row.exceptions:[]
+              },
+              create:{
+                guildId:i.guildId,
+                type:row.type,
+                enabled:row.enabled,
+                action:row.action,
+                threshold:row.threshold,
+                durationSeconds:row.durationSeconds??null,
+                whitelist:Array.isArray(row.whitelist)?row.whitelist:[],
+                exceptions:Array.isArray(row.exceptions)?row.exceptions:[]
+              }
+            });
+          }
+
+          for(const panel of backup.panels||[]){
+            if(!isObject(panel)||typeof panel.name!=='string'||!Array.isArray(panel.categories||[])){
+              throw new Error('BACKUP_INVALID_PANEL');
+            }
+            const restored=await tx.ticketPanel.upsert({
+              where:{guildId_name:{guildId:i.guildId,name:panel.name}},
+              update:{
+                channelId:panel.channelId,
+                title:panel.title,
+                description:panel.description,
+                color:panel.color,
+                image:panel.image,
+                thumbnail:panel.thumbnail,
+                footer:panel.footer,
+                active:panel.active
+              },
+              create:{
+                guildId:i.guildId,
+                name:panel.name,
+                channelId:panel.channelId,
+                title:panel.title,
+                description:panel.description,
+                color:panel.color,
+                image:panel.image,
+                thumbnail:panel.thumbnail,
+                footer:panel.footer,
+                active:panel.active
+              }
+            });
+
+            for(const category of panel.categories||[]){
+              if(!isObject(category)||typeof category.name!=='string'||!Array.isArray(category.questions||[])){
+                throw new Error('BACKUP_INVALID_CATEGORY');
+              }
+              const restoredCategory=await tx.ticketCategory.upsert({
+                where:{panelId_name:{panelId:restored.id,name:category.name}},
+                update:{
+                  description:category.description,
+                  emoji:category.emoji,
+                  supportRoleIds:Array.isArray(category.supportRoleIds)?category.supportRoleIds:[],
+                  discordCategoryId:category.discordCategoryId
+                },
+                create:{
+                  panelId:restored.id,
+                  name:category.name,
+                  description:category.description,
+                  emoji:category.emoji,
+                  supportRoleIds:Array.isArray(category.supportRoleIds)?category.supportRoleIds:[],
+                  discordCategoryId:category.discordCategoryId
+                }
+              });
+
+              for(const question of category.questions||[]){
+                if(!isObject(question)||typeof question.label!=='string'){
+                  throw new Error('BACKUP_INVALID_QUESTION');
+                }
+                await tx.ticketQuestion.upsert({
+                  where:{categoryId_label:{categoryId:restoredCategory.id,label:question.label}},
+                  update:{
+                    placeholder:question.placeholder,
+                    required:question.required
+                  },
+                  create:{
+                    categoryId:restoredCategory.id,
+                    label:question.label,
+                    placeholder:question.placeholder,
+                    required:question.required
+                  }
+                });
+              }
+            }
+          }
+        });
+
+        await audit(i.guildId,i.user.id,'backup','restore',file);
+        return i.reply(deny('💾 Backup restaurado correctamente. Si algo falla, no se aplicaron cambios parciales.'));
+      }catch(e){
+        if(e?.message?.startsWith('BACKUP_INVALID_')){
+          return i.reply(deny('El backup contiene datos inválidos y no pudo restaurarse.'));
+        }
+        logger.error('Backup restore failed',{error:e.message,file});
+        return i.reply(deny('No se pudo restaurar el backup. No se aplicaron cambios parciales.'));
+      }
     }
 
     if(i.commandName==='backup'){const sub=i.options.getSubcommand();const dir=path.join(process.cwd(),'backups');await mkdir(dir,{recursive:true});if(sub==='create'){const data=await prisma.guild.findUnique({where:{id:i.guildId},include:{welcomeConfig:true,vouchConfig:true,presenceConfig:true,panels:{include:{categories:{include:{questions:true}}}},autoResponders:true,logConfig:true,autoModRules:true}});const file='guild-'+i.guildId+'-'+Date.now()+'.json';await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');return i.reply(deny('💾 Backup creado: `'+file+'`'))}const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'))}
