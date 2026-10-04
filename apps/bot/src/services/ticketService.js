@@ -80,14 +80,14 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
         try{html=await transcript(channel,ticket)}catch(e){logger.warn('Ticket transcript before configuration deletion failed',{ticketId:ticket.id,error:e.message})}
       }
       try{
-        await prisma.$transaction(async tx=>{
+        const changed=await prisma.$transaction(async tx=>{
           const updated=await tx.ticket.updateMany({where:{id:ticket.id,status:'open'},data:{status:'closed',closedAt,closedReason:'Configuración de tickets eliminada',categoryName:ticket.category?.name||ticket.categoryName||'Categoría eliminada'}});
           if(!updated.count)return false;
           if(html)await tx.ticketTranscript.upsert({where:{ticketId:ticket.id},update:{html},create:{ticketId:ticket.id,html}});
           await tx.ticketStats.create({data:{guildId,userId:ticket.userId,staffId:null,categoryId,action:'closed',duration:Math.max(0,Math.floor((closedAt.getTime()-ticket.createdAt.getTime())/1000))}});
           return true;
         });
-        closedCount++;
+        if(changed)closedCount++;
       }catch(e){
         logger.error('Ticket close before configuration deletion failed',{ticketId:ticket.id,error:e.message});
         continue;
