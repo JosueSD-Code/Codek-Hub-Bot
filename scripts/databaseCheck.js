@@ -20,6 +20,11 @@ async function columnExists(tableName, columnName) {
 }
 
 async function main() {
+  if (!process.env.DATABASE_URL) {
+    console.warn('DATABASE_URL is not configured in this workflow; skipping live database check.');
+    return;
+  }
+
   const ticketCategoryName = await columnExists('Ticket', 'categoryName');
   const ticketCategoryIdNullable = await prisma.$queryRawUnsafe(
     'SELECT is_nullable FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'Ticket\' AND column_name = \'categoryId\''
