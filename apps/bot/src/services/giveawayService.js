@@ -6,7 +6,7 @@ export async function create({guildId,channelId,messageId,prize,winners,endsAt,c
 
 async function withGiveawayLock(id,work){
   return prisma.$transaction(async tx=>{
-    await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'codek:giveaway:'+id}))`;
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'codek:giveaway:'+id}))`;
     return work(tx);
   });
 }
