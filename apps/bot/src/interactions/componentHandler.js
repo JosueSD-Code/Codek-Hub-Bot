@@ -47,7 +47,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       if(!t||t.status!=='open')return i.reply(deny('Ticket no encontrado o cerrado.'));
 
       const member=i.member;
-      const canClaim=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
+      const canClaim=Boolean(member?.roles?.cache)&&Boolean(t.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
       if(!canClaim)return i.reply(deny('Solo soporte puede reclamar tickets.'));
 
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
@@ -89,7 +89,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
 
       const member=i.member;
-      const isSupport=Boolean(member?.roles?.cache)&&t.category.supportRoleIds.some(x=>member.roles.cache.has(x));
+      const isSupport=Boolean(member?.roles?.cache)&&Boolean(t.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
       const allowed=i.user.id===t.userId||isSupport;
       if(!allowed)return i.reply(deny('No tienes permiso para cerrar este ticket.'));
 
