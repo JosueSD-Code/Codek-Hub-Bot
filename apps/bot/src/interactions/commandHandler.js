@@ -26,7 +26,8 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     return (d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
   }
 
-    if(!i.isChatInputCommand())return;
+    const isGiveawayJoinButton=i.isButton()&&i.customId.startsWith('giveaway:join:');
+    if(!i.isChatInputCommand()&&!isGiveawayJoinButton)return;
 
     if(i.commandName==='help'){
       return i.reply({embeds:[helpEmbed()]});
@@ -359,7 +360,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       }
     }
 
-    if(i.isButton()&&i.customId.startsWith('giveaway:join:')){const id=i.customId.split(':')[2];const row=await toggleParticipant(id,i.user.id);if(!row)return i.reply(deny('Este sorteo ya terminó.'));await i.message.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:join:'+row.id).setLabel('🎉 Participar ('+row.participants.length+')').setStyle(ButtonStyle.Success))]}).catch(()=>{});return i.reply(deny(row.participants.includes(i.user.id)?'Participación registrada.':'Has salido del sorteo.'))}
+    if(i.isButton()&&i.customId.startsWith('giveaway:join:')){const id=i.customId.split(':')[2];const row=await toggleParticipant(id,i.user.id,i.guildId,i.message?.id);if(!row)return i.reply(deny('Este sorteo ya terminó.'));await i.message.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:join:'+row.id).setLabel('🎉 Participar ('+row.participants.length+')').setStyle(ButtonStyle.Success))]}).catch(()=>{});return i.reply(deny(row.participants.includes(i.user.id)?'Participación registrada.':'Has salido del sorteo.'))}
 
     if(i.commandName==='vouches'){const sub=i.options.getSubcommand();if(sub==='view'){const user=i.options.getUser('usuario');const rows=await prisma.vouch.findMany({where:{guildId:i.guildId,targetId:user.id},orderBy:{createdAt:'desc'},take:20});const avg=rows.length?rows.reduce((sum,r)=>sum+r.rating,0)/rows.length:0;return i.reply({embeds:[new EmbedBuilder().setTitle('⭐ Reputación de '+user.username).setDescription('Vouches: **'+rows.length+'**\nRating promedio: **'+avg.toFixed(2)+'/5**\nNivel: **'+(Math.floor(rows.length/10)+1)+'**').setColor(0xFEE75C).setThumbnail(user.displayAvatarURL({size:256}))]})}if(sub==='top'){const grouped=await prisma.vouch.groupBy({by:['targetId'],where:{guildId:i.guildId},_count:{targetId:true},orderBy:{_count:{targetId:'desc'}},take:10});const lines=[];for(const row of grouped){const user=await client.users.fetch(row.targetId).catch(()=>null);lines.push('**'+(lines.length+1)+'.** '+(user?.toString()||row.targetId)+' — '+row._count.targetId)}return i.reply(deny(lines.length?lines.join('\n'):'No hay vouches.'))}const total=await prisma.vouch.count({where:{guildId:i.guildId}});const avg=await prisma.vouch.aggregate({where:{guildId:i.guildId},_avg:{rating:true}});return i.reply(deny('⭐ Vouches totales: **'+total+'**\nRating promedio: **'+(avg._avg.rating?.toFixed(2)||'0')+'/5'))}
 
