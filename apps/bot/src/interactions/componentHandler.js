@@ -204,22 +204,6 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       const ch=c.channelId?i.guild.channels.cache.get(c.channelId):null;
       if(!target||!targetMember||target.bot||!ch?.isTextBased())return i.reply(deny('El usuario o canal de vouches ya no existe o el usuario no pertenece al servidor.'));
 
-      try{
-        await prisma.vouch.create({
-          data:{
-            guildId:i.guildId,
-            targetId,
-            reviewerId:i.user.id,
-            reviewType:type,
-            rating,
-            text
-          }
-        });
-      }catch(e){
-        if(e?.code==='P2002')return i.reply(deny('Ya has dejado un vouch para este usuario.'));
-        throw e;
-      }
-
       const x=context(target,i.guild,ch,{
         target:target.toString(),
         targetavatar:target.displayAvatarURL({size:1024,extension:'png'}),
