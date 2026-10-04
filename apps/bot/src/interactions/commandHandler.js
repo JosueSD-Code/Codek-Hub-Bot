@@ -710,8 +710,19 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         }
         if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));
         if(sub==='renombrar'){await renameTicket(channel,i.options.getString('nombre'));return i.reply(deny('Ticket renombrado.'))}
-        if(sub==='mover'){await moveTicket(channel,i.options.getChannel('categoria').id);return i.reply(deny('Ticket movido.'))}
-        if(sub==='prioridad'){const priority=i.options.getString('nivel');await prisma.ticket.update({where:{id:ticket.id},data:{priority}});return i.reply(deny('Prioridad actualizada a **'+priority+'**.'))}
+        if(sub==='mover'){
+          if(!managementIsSupport&&!isAdmin(i))return i.reply(deny('Solo soporte o administradores pueden mover un ticket.'));
+          const category=i.options.getChannel('categoria');
+          if(category.type!==ChannelType.GuildCategory)return i.reply(deny('La categoría indicada no es válida.'));
+          await moveTicket(channel,category.id);
+          return i.reply(deny('Ticket movido.'));
+        }
+        if(sub==='prioridad'){
+          if(!managementIsSupport&&!isAdmin(i))return i.reply(deny('Solo soporte o administradores pueden cambiar la prioridad.'));
+          const priority=i.options.getString('nivel');
+          await prisma.ticket.update({where:{id:ticket.id},data:{priority}});
+          return i.reply(deny('Prioridad actualizada a **'+priority+'**.'));
+        }
       }
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
 
