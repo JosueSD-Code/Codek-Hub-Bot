@@ -26,8 +26,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     return (d?d+'d ':'')+String(h).padStart(2,'0')+':'+String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
   }
 
-    const isGiveawayJoinButton=i.isButton()&&i.customId.startsWith('giveaway:join:');
-    if(!i.isChatInputCommand()&&!isGiveawayJoinButton)return;
+    if(!i.isChatInputCommand())return;
 
     if(i.commandName==='help'){
       return i.reply({embeds:[helpEmbed()]});
