@@ -166,7 +166,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       let createdVouch;
       try{
         createdVouch=await prisma.$transaction(async tx=>{
-          await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${'codek:vouch:'+i.guildId+':'+i.user.id}))`;
+          await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${'codek:vouch:'+i.guildId+':'+i.user.id}))`;
 
           const dbLast=await tx.vouch.findFirst({
             where:{guildId:i.guildId,reviewerId:i.user.id},
