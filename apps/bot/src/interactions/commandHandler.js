@@ -308,26 +308,28 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       const permissions={warn:PermissionFlagsBits.ModerateMembers,mute:PermissionFlagsBits.ModerateMembers,timeout:PermissionFlagsBits.ModerateMembers,unmute:PermissionFlagsBits.ModerateMembers,untimeout:PermissionFlagsBits.ModerateMembers,kick:PermissionFlagsBits.KickMembers,ban:PermissionFlagsBits.BanMembers,unban:PermissionFlagsBits.BanMembers,history:PermissionFlagsBits.ModerateMembers,clear:PermissionFlagsBits.ManageMessages};
       await checkBotPermissions(i,[permissions[i.commandName]]);
       if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.reply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
-      if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.');return i.reply(deny('Usuario desbaneado.'))}
+      if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.','MODERATION');return i.reply(deny('Usuario desbaneado.'))}
       const target=i.options.getUser('usuario');
       if(i.commandName==='history'){const rows=await moderationHistory(i.guildId,target.id,20);if(!rows.length)return i.reply(deny('No hay historial de moderación para ese usuario.'));return i.reply(deny(rows.map(x=>'• **'+x.action+'** — '+(x.reason||'Sin razón')+' — <t:'+Math.floor(x.createdAt.getTime()/1000)+':R>').join('\n')))}
       const member=await i.guild.members.fetch(target.id).catch(()=>null);if(!member)return i.reply(deny('El usuario no pertenece al servidor.'));
       const reason=i.options.getString('razon')?.trim()||'Sin razón especificada';
-      if(i.commandName==='warn'){await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'warn',reason});await logToChannel(i.guild,'⚠️ Advertencia','<@'+i.user.id+'> advirtió a '+target.toString()+'. Razón: '+reason);await target.send('⚠️ Has recibido una advertencia en **'+i.guild.name+'**. Razón: '+reason).catch(()=>{});return i.reply(deny('Advertencia registrada para '+target.toString()+'.'))}
-      if(i.commandName==='kick'){await member.kick(reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'kick',reason});await logToChannel(i.guild,'👢 Expulsión','<@'+i.user.id+'> expulsó a '+target.toString()+'. Razón: '+reason);return i.reply(deny('Usuario expulsado.'))}
-      if(i.commandName==='ban'){await member.ban({reason});await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'ban',reason});await logToChannel(i.guild,'🔨 Baneo','<@'+i.user.id+'> baneó a '+target.toString()+'. Razón: '+reason);return i.reply(deny('Usuario baneado.'))}
-      if(i.commandName==='unmute'||i.commandName==='untimeout'){await member.timeout(null,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'untimeout',reason});await logToChannel(i.guild,'🔊 Timeout retirado','<@'+i.user.id+'> retiró el timeout de '+target.toString()+'.');return i.reply(deny('Timeout retirado.'))}
+      if(i.commandName==='warn'){await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'warn',reason});await logToChannel(i.guild,'⚠️ Advertencia','<@'+i.user.id+'> advirtió a '+target.toString()+'. Razón: '+reason,'MODERATION');await target.send('⚠️ Has recibido una advertencia en **'+i.guild.name+'**. Razón: '+reason).catch(()=>{});return i.reply(deny('Advertencia registrada para '+target.toString()+'.'))}
+      if(i.commandName==='kick'){await member.kick(reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'kick',reason});await logToChannel(i.guild,'👢 Expulsión','<@'+i.user.id+'> expulsó a '+target.toString()+'. Razón: '+reason,'MODERATION');return i.reply(deny('Usuario expulsado.'))}
+      if(i.commandName==='ban'){await member.ban({reason});await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'ban',reason});await logToChannel(i.guild,'🔨 Baneo','<@'+i.user.id+'> baneó a '+target.toString()+'. Razón: '+reason,'MODERATION');return i.reply(deny('Usuario baneado.'))}
+      if(i.commandName==='unmute'||i.commandName==='untimeout'){await member.timeout(null,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'untimeout',reason});await logToChannel(i.guild,'🔊 Timeout retirado','<@'+i.user.id+'> retiró el timeout de '+target.toString()+'.','MODERATION');return i.reply(deny('Timeout retirado.'))}
       const parsed=parseDuration(i.options.getString('duracion'));if(!parsed)return i.reply(deny('Duración inválida. Usa 30m, 1h, 1d o 1w.'));if(parsed.ms>28*86400000)return i.reply(deny('Discord permite un máximo de 28 días de timeout.'));
-      await member.timeout(parsed.ms,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'timeout',reason,duration:parsed.seconds,expiresAt:new Date(Date.now()+parsed.ms)});await logToChannel(i.guild,'🔇 Timeout','<@'+i.user.id+'> aplicó timeout a '+target.toString()+'. Razón: '+reason);return i.reply(deny('Timeout aplicado a '+target.toString()+'.'));
+      await member.timeout(parsed.ms,reason);await recordModeration({guildId:i.guildId,targetId:target.id,moderatorId:i.user.id,action:'timeout',reason,duration:parsed.seconds,expiresAt:new Date(Date.now()+parsed.ms)});await logToChannel(i.guild,'🔇 Timeout','<@'+i.user.id+'> aplicó timeout a '+target.toString()+'. Razón: '+reason,'MODERATION');return i.reply(deny('Timeout aplicado a '+target.toString()+'.'));
     }
 
     if(i.commandName==='logs'){
+      if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
       if(sub==='set'){const channel=i.options.getChannel('canal');await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:channel.id}});await prisma.logConfig.upsert({where:{guildId:i.guildId},update:{channelId:channel.id},create:{guildId:i.guildId,channelId:channel.id,events:['MESSAGE_DELETE','MESSAGE_EDIT','MEMBER_JOIN','MEMBER_LEAVE','MEMBER_UPDATE','ROLE_CREATE','ROLE_DELETE','ROLE_UPDATE','CHANNEL_CREATE','CHANNEL_DELETE','CHANNEL_UPDATE','MODERATION','TICKET_CREATE','TICKET_CLOSE','TICKET_CLAIM','COMMAND']}});return i.reply(deny('📋 Canal de logs configurado en '+channel.toString()+'.'))}
       if(sub==='disable'){await prisma.guild.update({where:{id:i.guildId},data:{logChannelId:null}});await prisma.logConfig.deleteMany({where:{guildId:i.guildId}});return i.reply(deny('📋 Logs desactivados.'))}
       const row=await prisma.logConfig.findUnique({where:{guildId:i.guildId}});return i.reply(deny(row?'📋 Logs activos en <#'+row.channelId+'>.':'📋 Logs desactivados.'));
     }
     if(i.commandName==='automod'){
+      if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
       if(sub==='setup'){const rows=await prisma.autoModRule.findMany({where:{guildId:i.guildId},orderBy:{type:'asc'}});return i.reply(deny(rows.length?rows.map(r=>'• **'+r.type+'** — '+(r.enabled?'🟢':'⚪')+' — '+r.action+(r.threshold?' — '+r.threshold:'')).join('\n'):'No hay reglas AutoMod.'))}
       const enabled=i.options.getBoolean('enabled');const action=i.options.getString('action');
@@ -343,6 +345,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     }
 
     if(i.commandName==='giveaway'){
+      if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
       if(sub==='create'){const parsed=parseDuration(i.options.getString('duracion'));if(!parsed)return i.reply(deny('Duración inválida. Usa 10m, 2h o 1d.'));await i.deferReply({flags:64});const endsAt=new Date(Date.now()+parsed.ms);const message=await i.channel.send({embeds:[new EmbedBuilder().setTitle('🎉 Sorteo').setDescription('**'+i.options.getString('premio')+'**\n\nFinaliza <t:'+Math.floor(endsAt.getTime()/1000)+':R>\nParticipa con el botón de abajo.').setColor(0x5865F2)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:pending').setLabel('🎉 Participar').setStyle(ButtonStyle.Success))]});const row=await createGiveaway({guildId:i.guildId,channelId:i.channelId,messageId:message.id,prize:i.options.getString('premio'),winners:i.options.getInteger('ganadores'),endsAt,createdBy:i.user.id});await message.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:join:'+row.id).setLabel('🎉 Participar (0)').setStyle(ButtonStyle.Success))]});return i.editReply(deny('Sorteo creado. ID: `'+row.id+'`'))}
       if(sub==='list'){const rows=await prisma.giveaway.findMany({where:{guildId:i.guildId,ended:false},orderBy:{endsAt:'asc'}});return i.reply(deny(rows.length?rows.map(r=>'• `'+r.id+'` — **'+r.prize+'** — '+r.participants.length+' participantes').join('\n'):'No hay sorteos activos.'))}
@@ -368,6 +371,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     if(i.commandName==='health'){const started=Date.now();await prisma.$queryRawUnsafe('SELECT 1');const dbMs=Date.now()-started;const since=new Date(Date.now()-86400000);const commands24=await prisma.auditLog.count({where:{guildId:i.guildId,module:'command',createdAt:{gte:since}}});return i.reply(deny('🩺 Health Check\nPostgreSQL: 🟢 '+dbMs+' ms\nDiscord: 🟢 '+Math.max(0,Math.round(client.ws.ping))+' ms\nUptime: '+formatUptime(process.uptime())+'\nMemoria: '+Math.round(process.memoryUsage().rss/1024/1024)+' MB\nComandos 24h: '+commands24))}
 
     if(i.commandName==='backup'&&i.options.getSubcommand()==='restore'){
+      if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la restauración con confirmar: true.'));
       const dir=path.join(process.cwd(),'backups');
       const file=i.options.getString('archivo');
@@ -639,6 +643,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     }
 
     if(i.commandName==='backup'){
+      if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
       const dir=path.join(process.cwd(),'backups');
       await mkdir(dir,{recursive:true});
@@ -648,52 +653,6 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         const file='guild-'+i.guildId+'-'+Date.now()+'.json';
         await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');
         return i.reply(deny('💾 Backup creado: `'+file+'`'));
-      }
-      if(sub==='restore'){
-        if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la restauración con confirmar: true.'));
-        const file=i.options.getString('archivo').trim();
-        if(path.basename(file)!==file||!file.startsWith('guild-'+i.guildId+'-')||!file.endsWith('.json'))return i.reply(deny('Archivo inválido o perteneciente a otro servidor.'));
-        let data;
-        try{data=JSON.parse(await readFile(path.join(dir,file),'utf8'));}catch{return i.reply(deny('No se pudo leer el backup. Comprueba el nombre y que el JSON sea válido.'));}
-        if(!data||data.id!==i.guildId||!Array.isArray(data.panels)||!Array.isArray(data.autoResponders)||!Array.isArray(data.autoModRules))return i.reply(deny('El backup no tiene una estructura válida para este servidor.'));
-        if(data.panels.some(p=>!p||typeof p.name!=='string'||!Array.isArray(p.categories)||p.categories.some(c=>!c||typeof c.name!=='string'||!Array.isArray(c.questions))))return i.reply(deny('El backup contiene paneles, categorías o preguntas inválidos.'));
-        if(data.autoResponders.some(x=>!x||typeof x.trigger!=='string'||typeof x.response!=='string'))return i.reply(deny('El backup contiene autoresponders inválidos.'));
-        if(data.autoModRules.some(x=>!x||typeof x.type!=='string'))return i.reply(deny('El backup contiene reglas AutoMod inválidas.'));
-        await i.deferReply({flags:64});
-        try{
-          await prisma.$transaction(async tx=>{
-            await tx.guild.update({where:{id:i.guildId},data:{logChannelId:data.logChannelId??null}});
-            if(data.welcomeConfig){const {id,createdAt,updatedAt,guildId,...v}=data.welcomeConfig;await tx.welcomeConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
-            if(data.vouchConfig){const {id,createdAt,updatedAt,guildId,...v}=data.vouchConfig;await tx.vouchConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
-            if(data.presenceConfig){const {id,createdAt,updatedAt,guildId,...v}=data.presenceConfig;await tx.presenceConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
-            if(data.logConfig){const {guildId,...v}=data.logConfig;await tx.logConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
-            for(const r of data.autoResponders){
-              const {id,createdAt,updatedAt,guildId,...v}=r;
-              await tx.autoResponder.upsert({where:{guildId_trigger:{guildId:i.guildId,trigger:v.trigger}},create:{...v,guildId:i.guildId},update:v});
-            }
-            for(const r of data.autoModRules){
-              const {id,createdAt,updatedAt,guildId,...v}=r;
-              await tx.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:v.type}},create:{...v,guildId:i.guildId},update:v});
-            }
-            for(const panel of data.panels){
-              const {id,createdAt,updatedAt,guildId,categories,...v}=panel;
-              const savedPanel=await tx.ticketPanel.upsert({where:{guildId_name:{guildId:i.guildId,name:v.name}},create:{...v,guildId:i.guildId},update:v});
-              for(const category of categories){
-                const {id:categoryId,createdAt:categoryCreatedAt,updatedAt:categoryUpdatedAt,panelId,questions,...cv}=category;
-                const savedCategory=await tx.ticketCategory.upsert({where:{panelId_name:{panelId:savedPanel.id,name:cv.name}},create:{...cv,panelId:savedPanel.id},update:cv});
-                for(const question of questions){
-                  const {id:questionId,createdAt:questionCreatedAt,categoryId:oldCategoryId,...qv}=question;
-                  await tx.ticketQuestion.upsert({where:{categoryId_label:{categoryId:savedCategory.id,label:qv.label}},create:{...qv,categoryId:savedCategory.id},update:qv});
-                }
-              }
-            }
-          });
-          await audit(i.guildId,i.user.id,'backup','restored',file);
-          return i.editReply(deny('✅ Backup restaurado correctamente. Los elementos del backup se restauraron o actualizaron; la configuración que no figura en el archivo no se eliminó.'));
-        }catch(e){
-          logger.error('Backup restore failed',{guildId:i.guildId,file,error:e.message,stack:e.stack});
-          return i.editReply(deny('No se pudo restaurar el backup. La transacción se revirtió y no se aplicaron cambios parciales.'));
-        }
       }
       const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));
       return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'));
