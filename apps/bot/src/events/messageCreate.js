@@ -9,7 +9,7 @@ export function register(client,{prisma,processAutoMod,ADMIN,helpEmbed,findAutoR
         await logToChannel?.(
           m.guild,
           '🤖 AutoMod',
-          'Usuario: '+m.author.toString()+'\\nRegla: '+automod.type+'\\nAcción configurada: '+automod.action,
+          'Usuario: '+m.author.toString()+'\nRegla: '+automod.type+'\nAcción configurada: '+automod.action,
           'MODERATION'
         );
         return;
