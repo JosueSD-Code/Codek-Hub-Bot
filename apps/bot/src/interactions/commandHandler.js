@@ -406,6 +406,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         return i.reply(deny('El backup tiene un formato inválido: reglas AutoMod.'));
       }
 
+      await i.deferReply({flags:64});
       try{
         await prisma.$transaction(async tx=>{
           if(backup.welcomeConfig){
@@ -511,25 +512,23 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
               throw new Error('BACKUP_INVALID_AUTORESPONDER');
             }
             await tx.autoResponder.upsert({
-              where:{id:row.id},
+              where:{guildId_trigger:{guildId:i.guildId,trigger:row.trigger}},
               update:{
-                trigger:row.trigger,
                 response:row.response,
-                matchType:row.matchType,
-                embedTitle:row.embedTitle,
-                embedDescription:row.embedDescription,
-                embedColor:row.embedColor,
-                enabled:row.enabled
+                matchType:row.matchType||'contains',
+                embedTitle:row.embedTitle??null,
+                embedDescription:row.embedDescription??null,
+                embedColor:row.embedColor??null,
+                enabled:row.enabled!==false
               },
               create:{
-                id:row.id,
                 guildId:i.guildId,
                 trigger:row.trigger,
                 response:row.response,
                 matchType:row.matchType||'contains',
-                embedTitle:row.embedTitle,
-                embedDescription:row.embedDescription,
-                embedColor:row.embedColor,
+                embedTitle:row.embedTitle??null,
+                embedDescription:row.embedDescription??null,
+                embedColor:row.embedColor??null,
                 enabled:row.enabled!==false
               }
             });
@@ -637,13 +636,13 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         });
 
         await audit(i.guildId,i.user.id,'backup','restore',file);
-        return i.reply(deny('💾 Backup restaurado correctamente. Si algo falla, no se aplicaron cambios parciales.'));
+        return i.editReply(deny('💾 Backup restaurado correctamente. Si algo falla, no se aplicaron cambios parciales.'));
       }catch(e){
         if(e?.message?.startsWith('BACKUP_INVALID_')){
-          return i.reply(deny('El backup contiene datos inválidos y no pudo restaurarse.'));
+          return i.editReply(deny('El backup contiene datos inválidos y no pudo restaurarse.'));
         }
         logger.error('Backup restore failed',{error:e.message,file});
-        return i.reply(deny('No se pudo restaurar el backup. No se aplicaron cambios parciales.'));
+        return i.editReply(deny('No se pudo restaurar el backup. No se aplicaron cambios parciales.'));
       }
     }
 
