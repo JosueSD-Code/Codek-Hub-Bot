@@ -1,31 +1,6 @@
 import { Events } from 'discord.js';
 
-export function register(client,{prisma,endGiveaway,configureDiscordLogger,sendConsoleLog,logger,ensureGuild,deploy,presence,logToChannel}){
-  const originalConsole={log:console.log,warn:console.warn,error:console.error};
-
-  configureDiscordLogger(client,async()=>{
-    try{
-      const rows=await prisma.guild.findMany({
-        where:{logChannelId:{not:null}},
-        select:{logChannelId:true}
-      });
-      return rows.map(row=>row.logChannelId);
-    }catch(e){
-      originalConsole.error('Console log channel lookup failed',e);
-      return [];
-    }
-  });
-
-  for(const level of ['log','warn','error']){
-    console[level]=(...args)=>{
-      originalConsole[level](...args);
-      void sendConsoleLog(
-        level==='log'?'info':level,
-        args.map(x=>typeof x==='string'?x:JSON.stringify(x)).join(' ')
-      ).catch(()=>{});
-    };
-  }
-
+export function register(client,{prisma,endGiveaway,logger,ensureGuild,deploy,presence,logToChannel}){
   async function processExpiredModeration(){
     const rows=await prisma.moderationAction.findMany({
       where:{action:'automod_ban',expiresAt:{not:null,lte:new Date()}},
