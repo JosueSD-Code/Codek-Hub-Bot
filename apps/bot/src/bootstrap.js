@@ -10,7 +10,7 @@ import {
 } from '../../../packages/shared/src/index.js';
 
 import { ADMIN, isAdmin, deny, roleIdsByName } from './utils/permissions.js';
-import { clip, safeUrl, isHexColor, parseCustomEmoji } from './utils/validation.js';
+import { clip, safeUrl, isHexColor, parseCustomEmoji, isUnicodeEmoji } from './utils/validation.js';
 import { color } from './utils/embeds.js';
 import { handleDiscordError } from './middleware/validation.js';
 import { recordModeration, history as moderationHistory, parseDuration } from './services/moderationService.js';
@@ -64,7 +64,7 @@ const normalizeEmoji=(guild,value)=>{
     return {id:byName.id,name:byName.name||raw,animated:byName.animated};
   }
 
-  return raw;
+  return isUnicodeEmoji(raw)?raw:null;
 };
 
 const emojiExists=(guild,value)=>Boolean(normalizeEmoji(guild,value));
