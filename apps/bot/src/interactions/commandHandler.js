@@ -121,7 +121,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         thumbnail,
         footer:i.options.getString('footer'),
         goodbyeEnabled:Boolean(i.options.getString('despedida')),
-        goodbyeChannelId:i.options.getChannel('canal-despedida')?.id||null,
+        goodbyeChannelId:i.options.getChannel('canal-despedida')?.id||ch.id,
         goodbyeMessage:i.options.getString('despedida')||null
       };
 
