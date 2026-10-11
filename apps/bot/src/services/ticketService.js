@@ -147,10 +147,14 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
       const answersText=answers.length?'\n\n'+answers.map(x=>'**'+renderVariables(x.label,ticketContext)+':** '+renderVariables(x.answer,ticketContext)).join('\n'):'';
       const ticketEmbed=new EmbedBuilder().setTitle(clip(renderVariables('Ticket • '+cat.name,ticketContext),256)).setDescription(clip(renderVariables(cat.description||'El equipo te atenderá pronto.',ticketContext)+answersText,4096)).setColor(0x5865F2).setThumbnail(i.user.displayAvatarURL({size:512})).setTimestamp();
       await ch.send({content:clip(i.user.toString()+' '+supportRoleIds.map(x=>'<@&'+x+'>').join(' '),2000),embeds:[ticketEmbed],components:[row]});
-      await prisma.ticketStats.create({data:{guildId:i.guildId,userId:i.user.id,categoryId:cat.id,action:'created'}});
-      await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n);
-      await logToChannel?.(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.','TICKET_CREATE');
-      return i.editReply(deny('Ticket creado: '+ch));
+      await prisma.ticketStats.create({data:{guildId:i.guildId,userId:i.user.id,categoryId:cat.id,action:'created'}})
+        .catch(error=>logger.warn('Ticket created but statistics could not be recorded',{ticketId:t.id,error:error.message}));
+      await audit(i.guildId,i.user.id,'tickets','created',cat.name+' #'+n)
+        .catch(error=>logger.warn('Ticket created but audit could not be recorded',{ticketId:t.id,error:error.message}));
+      await Promise.resolve(logToChannel?.(i.guild,'Ticket creado','<@'+i.user.id+'> creó **'+cat.name+' #'+n+'**.','TICKET_CREATE'))
+        .catch(error=>logger.warn('Ticket created but channel log failed',{ticketId:t.id,error:error.message}));
+      return i.editReply(deny('Ticket creado: '+ch))
+        .catch(error=>logger.warn('Ticket created but interaction reply failed',{ticketId:t.id,error:error.message}));
     }catch(e){
       logger.error('Ticket creation failed',{error:e.message});
       if(createdTicketId)await prisma.ticket.delete({where:{id:createdTicketId}}).catch(deleteError=>logger.warn('Ticket rollback failed',{ticketId:createdTicketId,error:deleteError.message}));
@@ -181,11 +185,20 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
         return true;
       });
       if(!updated)return i.editReply(deny('Este ticket ya fue cerrado o está siendo cerrado.'));
-      await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number);
-      await logToChannel?.(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.','TICKET_CLOSE');
-      const g=await prisma.guild.findUnique({where:{id:i.guildId},select:{logChannelId:true}});const lc=g?.logChannelId?i.guild.channels.cache.get(g.logChannelId):null;
-      if(lc?.isTextBased())await lc.send({content:'Transcripción del ticket #'+t.number,files:[{attachment:Buffer.from(html,'utf8'),name:'ticket-'+t.number+'.html'}]});
-      await i.editReply(deny('Ticket cerrado. Transcripción guardada.'));setTimeout(()=>i.channel?.delete().catch(()=>{}),2500);
+      await audit(i.guildId,i.user.id,'tickets','closed','#'+t.number)
+        .catch(error=>logger.warn('Ticket closed but audit could not be recorded',{ticketId:t.id,error:error.message}));
+      await Promise.resolve(logToChannel?.(i.guild,'Ticket cerrado','Ticket **#'+t.number+'** cerrado por <@'+i.user.id+'>.','TICKET_CLOSE'))
+        .catch(error=>logger.warn('Ticket closed but channel log failed',{ticketId:t.id,error:error.message}));
+      try{
+        const g=await prisma.guild.findUnique({where:{id:i.guildId},select:{logChannelId:true}});
+        const lc=g?.logChannelId?i.guild.channels.cache.get(g.logChannelId):null;
+        if(lc?.isTextBased())await lc.send({content:'Transcripción del ticket #'+t.number,files:[{attachment:Buffer.from(html,'utf8'),name:'ticket-'+t.number+'.html'}]});
+      }catch(error){
+        logger.warn('Ticket closed but transcript upload failed',{ticketId:t.id,error:error.message});
+      }
+      await i.editReply(deny('Ticket cerrado. Transcripción guardada.'))
+        .catch(error=>logger.warn('Ticket closed but interaction reply failed',{ticketId:t.id,error:error.message}));
+      setTimeout(()=>i.channel?.delete().catch(()=>{}),2500);
     }catch(e){logger.error('Ticket close failed',{error:e.message});if(i.replied||i.deferred)await i.editReply(deny('No se pudo cerrar el ticket.')).catch(()=>{});else await i.reply(deny('No se pudo cerrar el ticket.')).catch(()=>{})}
     finally{closeLocks.delete(t.id)}
   }
