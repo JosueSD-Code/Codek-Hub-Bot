@@ -313,7 +313,8 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       if(!hasPermission(i,permissions[i.commandName])){
         return i.reply(deny('Necesitas el permiso **'+permissionNames[i.commandName]+'** para ejecutar este comando.'));
       }
-      await checkBotPermissions(i,[permissions[i.commandName]]);
+      const botPermissionRequired={mute:PermissionFlagsBits.ModerateMembers,timeout:PermissionFlagsBits.ModerateMembers,unmute:PermissionFlagsBits.ModerateMembers,untimeout:PermissionFlagsBits.ModerateMembers,kick:PermissionFlagsBits.KickMembers,ban:PermissionFlagsBits.BanMembers,unban:PermissionFlagsBits.BanMembers,clear:PermissionFlagsBits.ManageMessages};
+      if(botPermissionRequired[i.commandName])await checkBotPermissions(i,[botPermissionRequired[i.commandName]]);
       if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');await i.deferReply({flags:64});const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));await logToChannel(i.guild,'🧹 Purga de mensajes','<@'+i.user.id+'> eliminó '+deleted+' mensajes en '+i.channel.toString()+'.','MODERATION');return i.editReply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
       if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.','MODERATION');return i.reply(deny('Usuario desbaneado.'))}
       const target=i.options.getUser('usuario');
