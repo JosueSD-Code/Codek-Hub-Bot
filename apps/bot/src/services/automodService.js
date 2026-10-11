@@ -8,9 +8,12 @@ function actionOf(rule){
   return ['warn','delete','timeout','ban'].includes(rule.action)?rule.action:'delete';
 }
 
-function durationMs(rule){
-  const seconds=Number(rule.durationSeconds);
-  return Number.isFinite(seconds)&&seconds>0?Math.min(seconds,28*24*60*60):3600;
+export function durationMs(rule){
+  const seconds=Number(rule?.durationSeconds);
+  const normalizedSeconds=Number.isFinite(seconds)&&seconds>0
+    ?Math.min(seconds,28*24*60*60)
+    :3600;
+  return normalizedSeconds*1000;
 }
 
 function matchesRule(message,rule){
