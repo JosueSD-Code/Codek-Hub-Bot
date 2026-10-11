@@ -1,8 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PermissionFlagsBits, PermissionsBitField } from 'discord.js';
-import { isAdmin,roleIdsByName } from '../apps/bot/src/utils/permissions.js';
+import { isAdmin,hasPermission,roleIdsByName } from '../apps/bot/src/utils/permissions.js';
 import { isHexColor,requiredText,safeUrl,isUnicodeEmoji,parseCustomEmoji } from '../apps/bot/src/utils/validation.js';
+
+test('hasPermission comprueba permisos del miembro y de la interacción',()=>{
+  const memberPermissions=new PermissionsBitField([PermissionFlagsBits.ModerateMembers]);
+  assert.equal(hasPermission({memberPermissions},PermissionFlagsBits.ModerateMembers),true);
+  assert.equal(hasPermission({member:{permissions:memberPermissions}},PermissionFlagsBits.ModerateMembers),true);
+  assert.equal(hasPermission({memberPermissions},PermissionFlagsBits.BanMembers),false);
+});
 
 test('isAdmin acepta GuildMember e Interaction',()=>{
   const permissions=new PermissionsBitField([PermissionFlagsBits.Administrator]);
