@@ -20,6 +20,7 @@ export function parseDuration(value){
   if(!Number.isSafeInteger(amount))return null;
   const units={s:1000,m:60000,h:3600000,d:86400000,w:604800000};
   const ms=amount*units[match[2]];
-  if(!Number.isFinite(ms)||ms<=0)return null;
+  const maxDateDuration=8_640_000_000_000_000-Date.now();
+  if(!Number.isSafeInteger(ms)||ms<=0||ms>maxDateDuration)return null;
   return {ms,seconds:Math.floor(ms/1000)};
 }
