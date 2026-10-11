@@ -312,7 +312,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         return i.reply(deny('Necesitas el permiso **'+permissionNames[i.commandName]+'** para ejecutar este comando.'));
       }
       await checkBotPermissions(i,[permissions[i.commandName]]);
-      if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.reply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
+      if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');await i.deferReply({flags:64});const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.editReply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
       if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.','MODERATION');return i.reply(deny('Usuario desbaneado.'))}
       const target=i.options.getUser('usuario');
       if(i.commandName==='history'){const rows=await moderationHistory(i.guildId,target.id,20);if(!rows.length)return i.reply(deny('No hay historial de moderación para ese usuario.'));return i.reply(deny(rows.map(x=>'• **'+x.action+'** — '+(x.reason||'Sin razón')+' — <t:'+Math.floor(x.createdAt.getTime()/1000)+':R>').join('\n')))}
@@ -652,11 +652,12 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       const dir=path.join(process.cwd(),'backups');
       await mkdir(dir,{recursive:true});
       if(sub==='create'){
+        await i.deferReply({flags:64});
         const data=await prisma.guild.findUnique({where:{id:i.guildId},include:{welcomeConfig:true,vouchConfig:true,presenceConfig:true,panels:{include:{categories:{include:{questions:true}}}},autoResponders:true,logConfig:true,autoModRules:true}});
-        if(!data)return i.reply(deny('No se encontró la configuración del servidor.'));
+        if(!data)return i.editReply(deny('No se encontró la configuración del servidor.'));
         const file='guild-'+i.guildId+'-'+Date.now()+'.json';
         await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');
-        return i.reply(deny('💾 Backup creado: `'+file+'`'));
+        return i.editReply(deny('💾 Backup creado: `'+file+'`'));
       }
       const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));
       return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'));
