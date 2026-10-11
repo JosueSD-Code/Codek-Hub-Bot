@@ -1,4 +1,5 @@
 import {PrismaClient } from '@prisma/client';
+import { logger } from './logger.js';
 
 const key='__codekHubPrisma';
 export const prisma=globalThis[key]??new PrismaClient();
@@ -43,18 +44,28 @@ export async function findAutoResponder(content,guildId){
 
 export async function audit(guildId,userId,module,action,details){
   if(!guildId)return null;
-  await prisma.guild.upsert({
-    where:{id:guildId},
-    update:{},
-    create:{id:guildId}
-  });
-  return prisma.auditLog.create({
-    data:{
-      guild:{connect:{id:guildId}},
-      userId:userId??'unknown',
+  try{
+    await prisma.guild.upsert({
+      where:{id:guildId},
+      update:{},
+      create:{id:guildId}
+    });
+    return await prisma.auditLog.create({
+      data:{
+        guild:{connect:{id:guildId}},
+        userId:userId??'unknown',
+        module:module??'system',
+        action:action??'unknown',
+        details:details??null
+      }
+    });
+  }catch(error){
+    logger.warn('Audit log write failed',{
+      guildId,
       module:module??'system',
       action:action??'unknown',
-      details:details??null
-    }
-  });
+      error:error.message
+    });
+    return null;
+  }
 }
