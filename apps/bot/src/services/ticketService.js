@@ -174,8 +174,8 @@ export function createTicketRuntime({client,logger,audit,renderVariables,context
   async function closeTicket(i,t,reason=null){
     if(closeLocks.has(t.id))return i.reply(deny('El cierre ya está en proceso.'));
     closeLocks.add(t.id);
-    if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
     try{
+      if(!i.replied&&!i.deferred)await i.deferReply({flags:64});
       const html=await transcript(i.channel,t);const closedAt=new Date();
       const updated=await prisma.$transaction(async tx=>{
         const result=await tx.ticket.updateMany({where:{id:t.id,status:'open'},data:{status:'closed',closedAt,closedReason:reason}});
