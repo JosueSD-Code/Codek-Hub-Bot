@@ -36,7 +36,7 @@ async function main() {
 
   try {
     const url = new URL(process.env.DATABASE_URL);
-    if (['localhost', '127.0.0.1', '::1'].includes(url.hostname)) {
+    if (['localhost', '127.0.0.1', '::1'].includes(url.hostname) && process.env.CI !== 'true') {
       console.warn('DATABASE_URL points to localhost; GitHub Actions cannot reach a local database. Skipping live database check.');
       return;
     }
