@@ -1,6 +1,6 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle } from 'discord.js';
 
-export async function disableGiveawayMessage(client,giveaway,logger){
+export async function disableGiveawayMessage(client,giveaway,logger,label='Sorteo finalizado'){
   try{
     const channel=client.channels.cache.get(giveaway.channelId)
       ?? await client.channels.fetch(giveaway.channelId).catch(()=>null);
@@ -12,7 +12,7 @@ export async function disableGiveawayMessage(client,giveaway,logger){
     const row=new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId('giveaway:join:'+giveaway.id)
-        .setLabel('Sorteo finalizado')
+        .setLabel(String(label).slice(0,80))
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(true)
     );
