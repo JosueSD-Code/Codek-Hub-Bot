@@ -65,7 +65,12 @@ export function register(client,{prisma,endGiveaway,logger,ensureGuild,deploy,pr
           await channel.send(
             '🎉 Sorteo finalizado: **'+row.prize+'**\nGanadores: '+
             (result.winnerIds?.map(id=>'<@'+id+'>').join(', ')||'No hubo ganadores.')
-          );
+          ).catch(error=>logger.warn('Giveaway ended but winners could not be announced',{
+            giveawayId:row.id,
+            error:error.message
+          }));
+        }else{
+          logger.warn('Giveaway ended but original channel is unavailable',{giveawayId:row.id,channelId:row.channelId});
         }
       }catch(e){
         logger.error('Giveaway finalization failed',{
