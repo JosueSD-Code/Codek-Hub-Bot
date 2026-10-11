@@ -41,8 +41,7 @@ async function main() {
       return;
     }
   } catch {
-    console.warn('DATABASE_URL is not a valid URL; skipping live database check.');
-    return;
+    throw new Error('DATABASE_URL is configured but is not a valid URL.');
   }
 
   const ticketCategoryName = await columnExists('Ticket', 'categoryName');
