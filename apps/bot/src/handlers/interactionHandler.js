@@ -4,7 +4,7 @@ import { handleCommandInteraction } from '../interactions/commandHandler.js';
 import { Events } from 'discord.js';
 
 export function registerInteractionHandler(client,deps){
-  const {prisma,logger,deny,clip,safeUrl,color,context,audit,createTicket,closeTicket,handleDiscordError,renderVariables,toggleParticipant,logToChannel}=deps;
+  const {prisma,logger,deny,clip,safeUrl,color,context,audit,createTicket,closeTicket,handleDiscordError,renderVariables,toggleParticipant,logToChannel,isAdmin}=deps;
   const cooldowns=new Map();
 
   client.on(Events.InteractionCreate,async i=>{
@@ -19,7 +19,7 @@ export function registerInteractionHandler(client,deps){
     }
     if(i.isChatInputCommand())void audit(i.guildId,i.user.id,'command',i.commandName).catch(()=>{});
 
-    if(await handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger}))return;
+    if(await handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger,isAdmin}))return;
 
     if(i.isChatInputCommand())return handleCommandInteraction(i,{...deps,client,cooldowns});
   }catch(e){
