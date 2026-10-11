@@ -1,4 +1,5 @@
 import { Events } from 'discord.js';
+import { disableGiveawayMessage } from '../utils/giveawayMessages.js';
 
 export function register(client,{prisma,endGiveaway,logger,ensureGuild,deploy,presence,logToChannel}){
   async function processExpiredModeration(){
@@ -58,7 +59,8 @@ export function register(client,{prisma,endGiveaway,logger,ensureGuild,deploy,pr
         const result=await endGiveaway(row);
         if(!result)continue;
 
-        const channel=client.channels.cache.get(row.channelId);
+        await disableGiveawayMessage(client,row,logger);
+        const channel=client.channels.cache.get(row.channelId)??await client.channels.fetch(row.channelId).catch(()=>null);
         if(channel?.isTextBased()){
           await channel.send(
             '🎉 Sorteo finalizado: **'+row.prize+'**\nGanadores: '+
