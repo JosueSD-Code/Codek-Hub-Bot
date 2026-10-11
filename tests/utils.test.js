@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PermissionFlagsBits, PermissionsBitField } from 'discord.js';
 import { isAdmin,roleIdsByName } from '../apps/bot/src/utils/permissions.js';
-import { isHexColor,requiredText,safeUrl,isUnicodeEmoji } from '../apps/bot/src/utils/validation.js';
+import { isHexColor,requiredText,safeUrl,isUnicodeEmoji,parseCustomEmoji } from '../apps/bot/src/utils/validation.js';
 
 test('isAdmin acepta GuildMember e Interaction',()=>{
   const permissions=new PermissionsBitField([PermissionFlagsBits.Administrator]);
@@ -21,6 +21,13 @@ test('safeUrl solo acepta http/https',()=>{
   assert.equal(safeUrl('https://example.com'),'https://example.com/');
   assert.equal(safeUrl('javascript:alert(1)'),null);
   assert.equal(safeUrl('data:text/html,test'),null);
+});
+
+test('parseCustomEmoji reconoce emojis de Discord estáticos y animados',()=>{
+  assert.deepEqual(parseCustomEmoji('<:soporte:123456789012345678>'),{animated:false,name:'soporte',id:'123456789012345678'});
+  assert.deepEqual(parseCustomEmoji('<a:party_penguin:123456789012345678>'),{animated:true,name:'party_penguin',id:'123456789012345678'});
+  assert.equal(parseCustomEmoji('soporte'),null);
+  assert.equal(parseCustomEmoji('<:invalido:id>'),null);
 });
 
 test('isUnicodeEmoji distingue emoji de texto arbitrario',()=>{
