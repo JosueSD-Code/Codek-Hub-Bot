@@ -8,5 +8,8 @@ export async function deployCommands(client,env,commands,logger){
     try{await rest.put(Routes.applicationGuildCommands(env.DISCORD_CLIENT_ID,guild.id),{body});deployed++}
     catch(e){logger.warn('Could not deploy guild commands',{guildId:guild.id,error:e.message})}
   }
+  if(client.guilds.cache.size>0&&deployed===0){
+    throw new Error('Command registration failed in every connected guild. Check the Discord API validation errors above.');
+  }
   logger.info('Commands deployed to guilds',{count:body.length,guilds:deployed});
 }
