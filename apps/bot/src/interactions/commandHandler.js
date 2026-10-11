@@ -662,6 +662,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         await i.deferReply({flags:64});
         try{
           await prisma.$transaction(async tx=>{
+            await tx.guild.update({where:{id:i.guildId},data:{logChannelId:data.logChannelId??null}});
             if(data.welcomeConfig){const {id,createdAt,updatedAt,guildId,...v}=data.welcomeConfig;await tx.welcomeConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
             if(data.vouchConfig){const {id,createdAt,updatedAt,guildId,...v}=data.vouchConfig;await tx.vouchConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
             if(data.presenceConfig){const {id,createdAt,updatedAt,guildId,...v}=data.presenceConfig;await tx.presenceConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
