@@ -744,6 +744,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
           const supportRoleIds=ticket.category.supportRoleIds.filter(id=>i.guild.roles.cache.has(id));
           if(!supportRoleIds.length)return i.reply(deny('La categoría ya no tiene roles de soporte válidos.'));
           let reopened;
+          let ticketReopened=false;
           try{
             reopened=await i.guild.channels.create({
               name:clip(clean(ticket.category.name)+'-'+ticket.number,95),
@@ -755,11 +756,6 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
                 ...supportRoleIds.map(id=>({id,allow:['ViewChannel','SendMessages','ReadMessageHistory']}))
               ]
             });
-            await prisma.$transaction([
-              prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null,claimedAt:null}}),
-              prisma.ticketStats.create({data:{guildId:i.guildId,userId:ticket.userId,categoryId:ticket.categoryId,action:'reopened'}})
-            ]);
-            await audit(i.guildId,i.user.id,'tickets','reopened','#'+ticket.number);
             await reopened.send({
               embeds:[new EmbedBuilder().setTitle('🔓 Ticket reabierto').setDescription('Ticket reabierto por '+i.user.toString()+'.').setColor(0x57F287)],
               components:[new ActionRowBuilder().addComponents(
@@ -767,11 +763,18 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
                 new ButtonBuilder().setCustomId('ticket:close:'+ticket.id).setLabel('Cerrar ticket').setStyle(ButtonStyle.Danger)
               )]
             });
-            return i.reply(deny('Ticket reabierto en '+reopened.toString()+'.'));
+            await prisma.$transaction([
+              prisma.ticket.update({where:{id:ticket.id},data:{status:'open',closedAt:null,closedReason:null,channelId:reopened.id,claimedById:null,claimedAt:null}}),
+              prisma.ticketStats.create({data:{guildId:i.guildId,userId:ticket.userId,categoryId:ticket.categoryId,action:'reopened'}})
+            ]);
+            ticketReopened=true;
           }catch(e){
-            if(reopened)await reopened.delete().catch(()=>{});
+            if(reopened&&!ticketReopened)await reopened.delete().catch(()=>{});
             throw e;
           }
+          await audit(i.guildId,i.user.id,'tickets','reopened','#'+ticket.number)
+            .catch(error=>logger.warn('Ticket reopened but audit could not be recorded',{ticketId:ticket.id,error:error.message}));
+          return i.reply(deny('Ticket reabierto en '+reopened.toString()+'.'));
         }
         if(!channel)return i.reply(deny('El canal del ticket ya no existe.'));
         if(sub==='renombrar'){await renameTicket(channel,i.options.getString('nombre'));return i.reply(deny('Ticket renombrado.'))}
