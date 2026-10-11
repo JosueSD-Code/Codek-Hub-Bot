@@ -352,7 +352,51 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
     if(i.commandName==='giveaway'){
       if(!isAdmin(i))return i.reply(deny('Necesitas permisos de administrador.'));
       const sub=i.options.getSubcommand();
-      if(sub==='create'){const parsed=parseDuration(i.options.getString('duracion'));if(!parsed)return i.reply(deny('Duración inválida. Usa 10m, 2h o 1d.'));await i.deferReply({flags:64});const endsAt=new Date(Date.now()+parsed.ms);const message=await i.channel.send({embeds:[new EmbedBuilder().setTitle('🎉 Sorteo').setDescription('**'+i.options.getString('premio')+'**\n\nFinaliza <t:'+Math.floor(endsAt.getTime()/1000)+':R>\nParticipa con el botón de abajo.').setColor(0x5865F2)],components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:pending').setLabel('🎉 Participar').setStyle(ButtonStyle.Success))]});const row=await createGiveaway({guildId:i.guildId,channelId:i.channelId,messageId:message.id,prize:i.options.getString('premio'),winners:i.options.getInteger('ganadores'),endsAt,createdBy:i.user.id});await message.edit({components:[new ActionRowBuilder().addComponents(new ButtonBuilder().setCustomId('giveaway:join:'+row.id).setLabel('🎉 Participar (0)').setStyle(ButtonStyle.Success))]});return i.editReply(deny('Sorteo creado. ID: `'+row.id+'`'))}
+      if(sub==='create'){
+        const parsed=parseDuration(i.options.getString('duracion'));
+        if(!parsed)return i.reply(deny('Duración inválida. Usa 10m, 2h o 1d.'));
+        await i.deferReply({flags:64});
+        const endsAt=new Date(Date.now()+parsed.ms);
+        let message=null;
+        let row=null;
+        try{
+          message=await i.channel.send({
+            embeds:[new EmbedBuilder()
+              .setTitle('🎉 Sorteo')
+              .setDescription('**'+i.options.getString('premio')+'**\\n\\nFinaliza <t:'+Math.floor(endsAt.getTime()/1000)+':R>\\nParticipa con el botón de abajo.')
+              .setColor(0x5865F2)],
+            components:[new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId('giveaway:pending')
+                .setLabel('🎉 Preparando sorteo…')
+                .setStyle(ButtonStyle.Secondary)
+                .setDisabled(true)
+            )]
+          });
+          row=await createGiveaway({
+            guildId:i.guildId,
+            channelId:i.channelId,
+            messageId:message.id,
+            prize:i.options.getString('premio'),
+            winners:i.options.getInteger('ganadores'),
+            endsAt,
+            createdBy:i.user.id
+          });
+          await message.edit({
+            components:[new ActionRowBuilder().addComponents(
+              new ButtonBuilder()
+                .setCustomId('giveaway:join:'+row.id)
+                .setLabel('🎉 Participar (0)')
+                .setStyle(ButtonStyle.Success)
+            )]
+          });
+        }catch(e){
+          if(row)await prisma.giveaway.delete({where:{id:row.id}}).catch(()=>{});
+          if(message)await message.delete().catch(()=>{});
+          throw e;
+        }
+        return i.editReply(deny('Sorteo creado. ID: `'+row.id+'`'));
+      }
       if(sub==='list'){const rows=await prisma.giveaway.findMany({where:{guildId:i.guildId,ended:false},orderBy:{endsAt:'asc'}});return i.reply(deny(rows.length?rows.map(r=>'• `'+r.id+'` — **'+r.prize+'** — '+r.participants.length+' participantes').join('\n'):'No hay sorteos activos.'))}
       const id=i.options.getString('id');const row=await prisma.giveaway.findFirst({where:{id,guildId:i.guildId}});if(!row)return i.reply(deny('Sorteo no encontrado.'));
       if(sub==='cancel'){const ended=await cancelGiveaway(row);return i.reply(deny(ended?'Sorteo cancelado.':'El sorteo ya había terminado.'))}
