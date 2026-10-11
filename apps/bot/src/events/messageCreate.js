@@ -1,11 +1,19 @@
 import { Events, PermissionFlagsBits, ChannelType, EmbedBuilder } from 'discord.js';
 
-export function register(client,{prisma,processAutoMod,ADMIN,helpEmbed,findAutoResponder,renderVariables,context,clip,color,audit,purgeChannelMessages,purgeEverything,logger}){
+export function register(client,{prisma,processAutoMod,ADMIN,helpEmbed,findAutoResponder,renderVariables,context,clip,color,audit,purgeChannelMessages,purgeEverything,logToChannel,logger}){
   client.on(Events.MessageCreate,async m=>{
     if(m.author.bot||!m.guildId)return;
     try{
       const automod=await processAutoMod(m);
-      if(automod)return;
+      if(automod){
+        await logToChannel?.(
+          m.guild,
+          '🤖 AutoMod',
+          'Usuario: '+m.author.toString()+'\\nRegla: '+automod.type+'\\nAcción configurada: '+automod.action,
+          'MODERATION'
+        );
+        return;
+      }
 
       const botMentioned=client.user&&m.mentions.users.has(client.user.id);
       if(botMentioned){
