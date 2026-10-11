@@ -9,7 +9,7 @@ import {
   TextInputStyle
 } from 'discord.js';
 
-export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant}){
+export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger}){
     if(i.isButton()&&i.customId.startsWith('giveaway:join:')){
       const id=i.customId.split(':')[2];
       await i.deferUpdate();
@@ -76,6 +76,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
         return i.reply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
       }
 
+      await i.deferReply({flags:64});
       try{
         await prisma.$transaction(async tx=>{
           const result=await tx.ticket.updateMany({
@@ -91,13 +92,17 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
           });
         });
       }catch(e){
-        if(e.message==='TICKET_ALREADY_CLAIMED')return i.reply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
+        if(e.message==='TICKET_ALREADY_CLAIMED')return i.editReply(deny('Este ticket ya fue reclamado por otro miembro del staff.'));
         throw e;
       }
 
-      await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:t.userId,categoryId:t.categoryId,action:'claimed'}});
-      await audit(i.guildId,i.user.id,'tickets','claimed','#'+t.number);
-      return i.reply(deny('Ticket reclamado por '+i.user.toString()+'.'));
+      await prisma.ticketStats.create({data:{guildId:i.guildId,staffId:i.user.id,userId:t.userId,categoryId:t.categoryId,action:'claimed'}})
+        .catch(error=>logger?.warn?.('Ticket button claim succeeded but statistics could not be recorded',{ticketId:t.id,error:error.message}));
+      await audit(i.guildId,i.user.id,'tickets','claimed','#'+t.number)
+        .catch(error=>logger?.warn?.('Ticket button claim succeeded but audit could not be recorded',{ticketId:t.id,error:error.message}));
+      await Promise.resolve(logToChannel?.(i.guild,'🎫 Ticket reclamado','<@'+i.user.id+'> reclamó el ticket #'+t.number+'.','TICKET_CLAIM'))
+        .catch(error=>logger?.warn?.('Ticket button claim succeeded but channel log failed',{ticketId:t.id,error:error.message}));
+      return i.editReply(deny('Ticket reclamado por '+i.user.toString()+'.'));
     }
 
     if(i.isButton()&&i.customId.startsWith('ticket:close:')){
