@@ -17,11 +17,11 @@ export function durationMs(rule){
 }
 
 function extractUrls(text){
-  const candidates=String(text??'').match(/(?:https?:\\/\\/|www\\.)[^\\s<>]+/gi)||[];
+  const candidates=String(text??'').match(/(?:https?:\/\/|www\.)[^\s<>]+/gi)||[];
   return candidates.map(candidate=>{
     const cleaned=candidate.replace(/[),.!?;]+$/g,'');
     try{
-      const url=new URL(/^www\\./i.test(cleaned)?'https://'+cleaned:cleaned);
+      const url=new URL(/^www\./i.test(cleaned)?'https://'+cleaned:cleaned);
       return {host:url.hostname.toLowerCase(),pathname:url.pathname.toLowerCase()};
     }catch{
       return null;
@@ -32,7 +32,7 @@ function extractUrls(text){
 function normalizeDomain(value){
   const raw=String(value??'').trim().toLowerCase();
   if(!raw)return null;
-  const candidate=raw.replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split(/[/?#]/,1)[0].replace(/:\\d+$/,'').replace(/\\.$/,'');
+  const candidate=raw.replace(/^https?:\/\//,'').replace(/^www\./,'').split(/[/?#]/,1)[0].replace(/:\d+$/,'').replace(/\.$/,'');
   if(!candidate||candidate.includes('@'))return null;
   try{return new URL('https://'+candidate).hostname.toLowerCase()}catch{return null}
 }
@@ -48,7 +48,7 @@ export function matchesRule(message,rule){
   const text=String(message.content??'');
   const lower=text.toLowerCase();
   if(rule.type==='links'){
-    if(!/(?:https?:\\/\\/|www\\.)/i.test(text))return false;
+    if(!/(?:https?:\/\/|www\.)/i.test(text))return false;
     const urls=extractUrls(text);
     if(!urls.length||urls.some(url=>!url))return true;
     return urls.some(url=>!isAllowedDomain(url.host,rule.whitelist));
@@ -56,7 +56,7 @@ export function matchesRule(message,rule){
   if(rule.type==='invites'){
     return extractUrls(text).some(url=>url&&(
       (url.host==='discord.gg'&&url.pathname.length>1)||
-      (['discord.com','discordapp.com'].includes(url.host)&&/^\\/invite\\/[^/]+/i.test(url.pathname))
+      (['discord.com','discordapp.com'].includes(url.host)&&/^\/invite\/[^/]+/i.test(url.pathname))
     ));
   }
   if(rule.type==='words')return (rule.whitelist||[]).some(word=>lower.includes(String(word).toLowerCase()));
