@@ -9,7 +9,7 @@ import {
   TextInputStyle
 } from 'discord.js';
 
-export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger}){
+export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger,isAdmin}){
     if(i.isButton()&&i.customId.startsWith('giveaway:join:')){
       const id=i.customId.split(':')[2];
       await i.deferUpdate();
@@ -115,7 +115,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
 
       const member=i.member;
       const isSupport=Boolean(member?.roles?.cache)&&Boolean(t.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
-      const allowed=i.user.id===t.userId||isSupport;
+      const allowed=i.user.id===t.userId||isSupport||isAdmin?.(i);
       if(!allowed)return i.reply(deny('No tienes permiso para cerrar este ticket.'));
 
       const row=new ActionRowBuilder().addComponents(
@@ -139,7 +139,7 @@ export async function handleComponentInteraction(i,{client,prisma,deny,clip,safe
       if(i.channelId!==t.channelId)return i.reply(deny('Este botón no pertenece al canal de este ticket.'));
       const member=i.member;
       const isSupport=Boolean(member?.roles?.cache)&&Boolean(t.category?.supportRoleIds?.some(x=>member.roles.cache.has(x)));
-      if(i.user.id!==t.userId&&!isSupport)return i.reply(deny('No tienes permiso para cerrar este ticket.'));
+      if(i.user.id!==t.userId&&!isSupport&&!isAdmin?.(i))return i.reply(deny('No tienes permiso para cerrar este ticket.'));
       return closeTicket(i,t);
     }
 
