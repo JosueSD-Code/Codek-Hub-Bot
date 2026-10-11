@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration } from '../apps/bot/src/services/moderationService.js';
+import { durationMs } from '../apps/bot/src/services/automodService.js';
 import { handleDiscordError } from '../apps/bot/src/middleware/validation.js';
 import { commands } from '../apps/bot/src/commands/index.js';
 import { isAdmin, roleIdsByName } from '../apps/bot/src/utils/permissions.js';
@@ -44,6 +45,13 @@ test('las opciones requeridas preceden a las opcionales en todos los subcomandos
 
 test('parseDuration rechaza overflow numérico',()=>{
   assert.equal(parseDuration('999999999999999999999999w'),null);
+  assert.equal(parseDuration('9007199254740991w'),null);
+});
+
+test('AutoMod convierte la duración configurada en segundos a milisegundos',()=>{
+  assert.equal(durationMs({durationSeconds:3600}),3_600_000);
+  assert.equal(durationMs({durationSeconds:null}),3_600_000);
+  assert.equal(durationMs({durationSeconds:28*24*60*60+60}),28*24*60*60*1000);
 });
 
 
