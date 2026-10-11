@@ -638,7 +638,65 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       }
     }
 
-    if(i.commandName==='backup'){const sub=i.options.getSubcommand();const dir=path.join(process.cwd(),'backups');await mkdir(dir,{recursive:true});if(sub==='create'){const data=await prisma.guild.findUnique({where:{id:i.guildId},include:{welcomeConfig:true,vouchConfig:true,presenceConfig:true,panels:{include:{categories:{include:{questions:true}}}},autoResponders:true,logConfig:true,autoModRules:true}});const file='guild-'+i.guildId+'-'+Date.now()+'.json';await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');return i.reply(deny('💾 Backup creado: `'+file+'`'))}const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'))}
+    if(i.commandName==='backup'){
+      const sub=i.options.getSubcommand();
+      const dir=path.join(process.cwd(),'backups');
+      await mkdir(dir,{recursive:true});
+      if(sub==='create'){
+        const data=await prisma.guild.findUnique({where:{id:i.guildId},include:{welcomeConfig:true,vouchConfig:true,presenceConfig:true,panels:{include:{categories:{include:{questions:true}}}},autoResponders:true,logConfig:true,autoModRules:true}});
+        if(!data)return i.reply(deny('No se encontró la configuración del servidor.'));
+        const file='guild-'+i.guildId+'-'+Date.now()+'.json';
+        await writeFile(path.join(dir,file),JSON.stringify(data,null,2),'utf8');
+        return i.reply(deny('💾 Backup creado: `'+file+'`'));
+      }
+      if(sub==='restore'){
+        if(!i.options.getBoolean('confirmar'))return i.reply(deny('Debes confirmar la restauración con confirmar: true.'));
+        const file=i.options.getString('archivo').trim();
+        if(path.basename(file)!==file||!file.startsWith('guild-'+i.guildId+'-')||!file.endsWith('.json'))return i.reply(deny('Archivo inválido o perteneciente a otro servidor.'));
+        let data;
+        try{data=JSON.parse(await readFile(path.join(dir,file),'utf8'));}catch{return i.reply(deny('No se pudo leer el backup. Comprueba el nombre y que el JSON sea válido.'));}
+        if(!data||data.id!==i.guildId||!Array.isArray(data.panels)||!Array.isArray(data.autoResponders)||!Array.isArray(data.autoModRules))return i.reply(deny('El backup no tiene una estructura válida para este servidor.'));
+        if(data.panels.some(p=>!p||typeof p.name!=='string'||!Array.isArray(p.categories)||p.categories.some(c=>!c||typeof c.name!=='string'||!Array.isArray(c.questions))))return i.reply(deny('El backup contiene paneles, categorías o preguntas inválidos.'));
+        if(data.autoResponders.some(x=>!x||typeof x.trigger!=='string'||typeof x.response!=='string'))return i.reply(deny('El backup contiene autoresponders inválidos.'));
+        if(data.autoModRules.some(x=>!x||typeof x.type!=='string'))return i.reply(deny('El backup contiene reglas AutoMod inválidas.'));
+        await i.deferReply({flags:64});
+        try{
+          await prisma.$transaction(async tx=>{
+            if(data.welcomeConfig){const {id,createdAt,updatedAt,guildId,...v}=data.welcomeConfig;await tx.welcomeConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
+            if(data.vouchConfig){const {id,createdAt,updatedAt,guildId,...v}=data.vouchConfig;await tx.vouchConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
+            if(data.presenceConfig){const {id,createdAt,updatedAt,guildId,...v}=data.presenceConfig;await tx.presenceConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
+            if(data.logConfig){const {guildId,...v}=data.logConfig;await tx.logConfig.upsert({where:{guildId:i.guildId},create:{...v,guildId:i.guildId},update:v});}
+            for(const r of data.autoResponders){
+              const {id,createdAt,updatedAt,guildId,...v}=r;
+              await tx.autoResponder.upsert({where:{guildId_trigger:{guildId:i.guildId,trigger:v.trigger}},create:{...v,guildId:i.guildId},update:v});
+            }
+            for(const r of data.autoModRules){
+              const {id,createdAt,updatedAt,guildId,...v}=r;
+              await tx.autoModRule.upsert({where:{guildId_type:{guildId:i.guildId,type:v.type}},create:{...v,guildId:i.guildId},update:v});
+            }
+            for(const panel of data.panels){
+              const {id,createdAt,updatedAt,guildId,categories,...v}=panel;
+              const savedPanel=await tx.ticketPanel.upsert({where:{guildId_name:{guildId:i.guildId,name:v.name}},create:{...v,guildId:i.guildId},update:v});
+              for(const category of categories){
+                const {id:categoryId,createdAt:categoryCreatedAt,updatedAt:categoryUpdatedAt,panelId,questions,...cv}=category;
+                const savedCategory=await tx.ticketCategory.upsert({where:{panelId_name:{panelId:savedPanel.id,name:cv.name}},create:{...cv,panelId:savedPanel.id},update:cv});
+                for(const question of questions){
+                  const {id:questionId,createdAt:questionCreatedAt,categoryId:oldCategoryId,...qv}=question;
+                  await tx.ticketQuestion.upsert({where:{categoryId_label:{categoryId:savedCategory.id,label:qv.label}},create:{...qv,categoryId:savedCategory.id},update:qv});
+                }
+              }
+            }
+          });
+          await audit(i.guildId,i.user.id,'backup','restored',file);
+          return i.editReply(deny('✅ Backup restaurado correctamente. Los elementos del backup se restauraron o actualizaron; la configuración que no figura en el archivo no se eliminó.'));
+        }catch(e){
+          logger.error('Backup restore failed',{guildId:i.guildId,file,error:e.message,stack:e.stack});
+          return i.editReply(deny('No se pudo restaurar el backup. La transacción se revirtió y no se aplicaron cambios parciales.'));
+        }
+      }
+      const files=(await readdir(dir)).filter(x=>x.startsWith('guild-'+i.guildId+'-')&&x.endsWith('.json'));
+      return i.reply(deny(files.length?files.map(x=>'• '+x).join('\n'):'No hay backups para este servidor.'));
+    }
     if(i.commandName==='tickets'){
       const sub=i.options.getSubcommand();
       const staffSubs=new Set(['reclamar','liberar','adduser','removeuser','cerrar','reabrir','renombrar','mover','prioridad','stats','transcript']);
