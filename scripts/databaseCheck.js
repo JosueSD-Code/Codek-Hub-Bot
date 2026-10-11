@@ -1,15 +1,8 @@
 import 'dotenv/config';
+import { readdir } from 'node:fs/promises';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-
-const EXPECTED_MIGRATIONS = [
-  '0_init',
-  '20261003192000_preserve_ticket_history',
-  '20261004023000_sync_current_schema',
-  '20261004030000_add_role_update_log_event',
-  '20261004031000_backfill_role_update_log_event'
-];
 
 async function tableExists(tableName) {
   const rows = await prisma.$queryRawUnsafe(
@@ -59,8 +52,10 @@ async function main() {
   const migrationRows = migrationTable
     ? await prisma.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
     : [];
+  const migrationEntries = await readdir(new URL('../prisma/migrations/', import.meta.url), { withFileTypes: true });
+  const expectedMigrations = migrationEntries.filter(entry => entry.isDirectory()).map(entry => entry.name).sort();
   const appliedMigrations = new Set(migrationRows.map(row => row.migration_name));
-  const missingMigrations = EXPECTED_MIGRATIONS.filter(name => !appliedMigrations.has(name));
+  const missingMigrations = expectedMigrations.filter(name => !appliedMigrations.has(name));
   const logEventsInfo = await prisma.$queryRawUnsafe(
     'SELECT is_nullable, column_default FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'LogConfig\' AND column_name = \'events\''
   );
