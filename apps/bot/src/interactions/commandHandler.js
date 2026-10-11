@@ -58,6 +58,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
           :await purgeChannelMessages(i.channel,amount);
 
         await audit(i.guildId,i.user.id,'moderation','purge',purgeAll?'all:'+deleted:String(deleted));
+        await logToChannel(i.guild,'🧹 Purga de mensajes','<@'+i.user.id+'> eliminó '+deleted+' mensajes en '+i.channel.toString()+'.','MODERATION');
         return i.editReply(deny(
           deleted
             ?'🧹 Se eliminaron **'+deleted+'** mensajes de este canal.'
@@ -313,7 +314,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
         return i.reply(deny('Necesitas el permiso **'+permissionNames[i.commandName]+'** para ejecutar este comando.'));
       }
       await checkBotPermissions(i,[permissions[i.commandName]]);
-      if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');await i.deferReply({flags:64});const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.editReply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
+      if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');await i.deferReply({flags:64});const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));await logToChannel(i.guild,'🧹 Purga de mensajes','<@'+i.user.id+'> eliminó '+deleted+' mensajes en '+i.channel.toString()+'.','MODERATION');return i.editReply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
       if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.','MODERATION');return i.reply(deny('Usuario desbaneado.'))}
       const target=i.options.getUser('usuario');
       if(i.commandName==='history'){const rows=await moderationHistory(i.guildId,target.id,20);if(!rows.length)return i.reply(deny('No hay historial de moderación para ese usuario.'));return i.reply(deny(rows.map(x=>'• **'+x.action+'** — '+(x.reason||'Sin razón')+' — <t:'+Math.floor(x.createdAt.getTime()/1000)+':R>').join('\n')))}
@@ -734,6 +735,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
           return i.reply(deny('Ticket liberado.'));
         }
         const managementMember=i.member;const managementIsSupport=Boolean(managementMember?.roles?.cache)&&Boolean(ticket.category?.supportRoleIds?.some(x=>managementMember.roles.cache.has(x)));
+        if(sub==='reabrir'&&!managementIsSupport&&!isAdmin(i))return i.reply(deny('Solo soporte o administradores pueden reabrir tickets.'));
         if(!managementIsSupport&&!isAdmin(i)&&ticket.userId!==i.user.id)return i.reply(deny('No tienes permisos para gestionar este ticket.'));
         if(sub==='transcript'){if(!ticket.transcript?.html)return i.reply(deny('Este ticket no tiene una transcripción guardada.'));return i.reply({content:'Transcripción del ticket #'+ticket.number,files:[new AttachmentBuilder(Buffer.from(ticket.transcript.html,'utf8'),{name:'ticket-'+ticket.number+'.html'})],flags:64})}
         if(ticket.status==='closed'&&sub!=='reabrir')return i.reply(deny('Este ticket está cerrado.'));
