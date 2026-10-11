@@ -1,4 +1,4 @@
-import { prisma } from '../../../../packages/shared/src/index.js';
+import { prisma, logger } from '../../../../packages/shared/src/index.js';
 
 const spamState=new Map();
 const SPAM_WINDOW_MS=10000;
@@ -93,30 +93,73 @@ export async function processAutoMod(message){
   if(!matched)return null;
 
   const action=actionOf(matched);
-  if(action==='delete')await message.delete();
   const durationMilliseconds=durationMs(matched);
   const hasCustomDuration=Number.isFinite(Number(matched.durationSeconds))&&Number(matched.durationSeconds)>0;
-  if(action==='timeout'){
-    if(!message.member)throw new Error('AutoMod timeout failed: guild member is unavailable.');
-    await message.member.timeout(durationMilliseconds,'AutoMod');
-  }
-  if(action==='ban'){
-    if(!message.member)throw new Error('AutoMod ban failed: guild member is unavailable.');
-    await message.member.ban({reason:'AutoMod'});
-  }
-  await message.author.send('⚠️ Tu mensaje fue moderado automáticamente en **'+message.guild.name+'**. Regla: '+matched.type+'. Acción: '+action+'.').catch(()=>{});
   const temporaryBan=action==='ban'&&hasCustomDuration;
-  await prisma.moderationAction.create({
-    data:{
-      guildId:message.guild.id,
-      targetId:message.author.id,
-      moderatorId:message.client.user.id,
-      action:'automod_'+action,
-      reason:'Regla: '+matched.type,
-      duration:(action==='timeout'||temporaryBan)?Math.floor(durationMilliseconds/1000):null,
-      expiresAt:(action==='timeout'||temporaryBan)?new Date(Date.now()+durationMilliseconds):null
+  const moderationData={
+    guildId:message.guild.id,
+    targetId:message.author.id,
+    moderatorId:message.client.user.id,
+    action:'automod_'+action,
+    reason:'Regla: '+matched.type,
+    duration:(action==='timeout'||temporaryBan)?Math.floor(durationMilliseconds/1000):null,
+    expiresAt:(action==='timeout'||temporaryBan)?new Date(Date.now()+durationMilliseconds):null
+  };
+
+  // Persist the expiry before applying a temporary ban, so a successful ban cannot
+  // become permanent merely because the database write fails afterward.
+  let expirationRecord=null;
+  if(temporaryBan){
+    expirationRecord=await prisma.moderationAction.create({data:moderationData});
+  }
+
+  try{
+    if(action==='delete')await message.delete();
+    if(action==='timeout'){
+      if(!message.member)throw new Error('AutoMod timeout failed: guild member is unavailable.');
+      await message.member.timeout(durationMilliseconds,'AutoMod');
     }
-  });
+    if(action==='ban'){
+      if(!message.member)throw new Error('AutoMod ban failed: guild member is unavailable.');
+      await message.member.ban({reason:'AutoMod'});
+    }
+  }catch(error){
+    if(expirationRecord){
+      try{
+        await prisma.moderationAction.delete({where:{id:expirationRecord.id}});
+      }catch(cleanupError){
+        try{
+          await prisma.moderationAction.update({
+            where:{id:expirationRecord.id},
+            data:{action:'automod_ban_failed',duration:null,expiresAt:null}
+          });
+        }catch(updateError){
+          logger.error('Temporary AutoMod ban failed and its expiry record could not be cleaned up',{
+            guildId:message.guild.id,
+            targetId:message.author.id,
+            error:cleanupError.message,
+            updateError:updateError.message
+          });
+        }
+      }
+    }
+    throw error;
+  }
+
+  await message.author.send('⚠️ Tu mensaje fue moderado automáticamente en **'+message.guild.name+'**. Regla: '+matched.type+'. Acción: '+action+'.').catch(()=>{});
+  if(!expirationRecord){
+    try{
+      await prisma.moderationAction.create({data:moderationData});
+    }catch(error){
+      logger.error('AutoMod action succeeded but could not be recorded',{
+        guildId:message.guild.id,
+        targetId:message.author.id,
+        action,
+        rule:matched.type,
+        error:error.message
+      });
+    }
+  }
   return matched;
 }
 
