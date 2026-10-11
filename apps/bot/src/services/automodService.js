@@ -16,11 +16,49 @@ export function durationMs(rule){
   return normalizedSeconds*1000;
 }
 
-function matchesRule(message,rule){
+function extractUrls(text){
+  const candidates=String(text??'').match(/(?:https?:\\/\\/|www\\.)[^\\s<>]+/gi)||[];
+  return candidates.map(candidate=>{
+    const cleaned=candidate.replace(/[),.!?;]+$/g,'');
+    try{
+      const url=new URL(/^www\\./i.test(cleaned)?'https://'+cleaned:cleaned);
+      return {host:url.hostname.toLowerCase(),pathname:url.pathname.toLowerCase()};
+    }catch{
+      return null;
+    }
+  });
+}
+
+function normalizeDomain(value){
+  const raw=String(value??'').trim().toLowerCase();
+  if(!raw)return null;
+  const candidate=raw.replace(/^https?:\\/\\//,'').replace(/^www\\./,'').split(/[/?#]/,1)[0].replace(/:\\d+$/,'').replace(/\\.$/,'');
+  if(!candidate||candidate.includes('@'))return null;
+  try{return new URL('https://'+candidate).hostname.toLowerCase()}catch{return null}
+}
+
+function isAllowedDomain(host,whitelist){
+  return (whitelist||[]).some(value=>{
+    const domain=normalizeDomain(value);
+    return Boolean(domain)&&(host===domain||host.endsWith('.'+domain));
+  });
+}
+
+export function matchesRule(message,rule){
   const text=String(message.content??'');
   const lower=text.toLowerCase();
-  if(rule.type==='links')return /https?:\/\/|www\./i.test(text)&&!(rule.whitelist||[]).some(x=>lower.includes(String(x).toLowerCase()));
-  if(rule.type==='invites')return /(?:discord(?:app)?\.com\/invite|discord\.gg)\//i.test(text);
+  if(rule.type==='links'){
+    if(!/(?:https?:\\/\\/|www\\.)/i.test(text))return false;
+    const urls=extractUrls(text);
+    if(!urls.length||urls.some(url=>!url))return true;
+    return urls.some(url=>!isAllowedDomain(url.host,rule.whitelist));
+  }
+  if(rule.type==='invites'){
+    return extractUrls(text).some(url=>url&&(
+      (url.host==='discord.gg'&&url.pathname.length>1)||
+      (['discord.com','discordapp.com'].includes(url.host)&&/^\\/invite\\/[^/]+/i.test(url.pathname))
+    ));
+  }
   if(rule.type==='words')return (rule.whitelist||[]).some(word=>lower.includes(String(word).toLowerCase()));
   if(rule.type==='mentions')return message.mentions.users.size>=Number(rule.threshold||5);
   if(rule.type==='caps'){
@@ -30,7 +68,6 @@ function matchesRule(message,rule){
   }
   return false;
 }
-
 function isExcepted(message,rule){
   const values=rule.exceptions||[];
   return values.includes(message.channelId)||values.some(id=>message.member?.roles?.cache?.has(id));
