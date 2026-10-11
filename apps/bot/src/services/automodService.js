@@ -17,11 +17,13 @@ export function durationMs(rule){
 }
 
 function extractUrls(text){
-  const candidates=(String(text??'').match(/(?:https?:\/\/|www\.)[^\s<>]+/gi)||[]).flatMap(candidate=>candidate.split(/(?=https?:\/\/|www\.)/i));
+  const pattern=/(?:https?:\/\/|www\.)[^\s<>]+|(?<![@\w.-])(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}(?::\d{1,5})?(?:\/[^\s<>;,]*)?/gi;
+  const candidates=(String(text??'').match(pattern)||[]).flatMap(candidate=>candidate.split(/(?=https?:\/\/|www\.)/i));
   return candidates.map(candidate=>{
     const cleaned=candidate.replace(/[),.!?;]+$/g,'');
     try{
-      const url=new URL(/^www\./i.test(cleaned)?'https://'+cleaned:cleaned);
+      const normalized=/^(?:https?:\/\/)/i.test(cleaned)?cleaned:'https://'+cleaned;
+      const url=new URL(normalized);
       return {host:url.hostname.toLowerCase(),pathname:url.pathname.toLowerCase()};
     }catch{
       return null;
@@ -48,9 +50,9 @@ export function matchesRule(message,rule){
   const text=String(message.content??'');
   const lower=text.toLowerCase();
   if(rule.type==='links'){
-    if(!/(?:https?:\/\/|www\.)/i.test(text))return false;
     const urls=extractUrls(text);
-    if(!urls.length||urls.some(url=>!url))return true;
+    if(!urls.length)return false;
+    if(urls.some(url=>!url))return true;
     return urls.some(url=>!isAllowedDomain(url.host,rule.whitelist));
   }
   if(rule.type==='invites'){
