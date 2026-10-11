@@ -10,7 +10,7 @@ import {
 } from '../../../packages/shared/src/index.js';
 
 import { ADMIN, isAdmin, deny, roleIdsByName } from './utils/permissions.js';
-import { clip, safeUrl, isHexColor } from './utils/validation.js';
+import { clip, safeUrl, isHexColor, parseCustomEmoji } from './utils/validation.js';
 import { color } from './utils/embeds.js';
 import { handleDiscordError } from './middleware/validation.js';
 import { recordModeration, history as moderationHistory, parseDuration } from './services/moderationService.js';
@@ -51,11 +51,11 @@ const normalizeEmoji=(guild,value)=>{
   const raw=String(value||'').trim();
   if(!raw)return null;
 
-  const custom=raw.match(/^<a?:([\\w~]+):(\\d+)>$/);
+  const custom=parseCustomEmoji(raw);
   if(custom){
-    const emoji=guild?.emojis?.cache?.get(custom[2]);
+    const emoji=guild?.emojis?.cache?.get(custom.id);
     if(!emoji)return null;
-    return {id:emoji.id,name:emoji.name||custom[1],animated:emoji.animated};
+    return {id:emoji.id,name:emoji.name||custom.name,animated:emoji.animated??custom.animated};
   }
 
   const byName=guild?.emojis?.cache?.find(
