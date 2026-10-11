@@ -17,7 +17,7 @@ export function durationMs(rule){
 }
 
 function extractUrls(text){
-  const candidates=String(text??'').match(/(?:https?:\/\/|www\.)[^\s<>]+/gi)||[];
+  const candidates=(String(text??'').match(/(?:https?:\/\/|www\.)[^\s<>]+/gi)||[]).flatMap(candidate=>candidate.split(/(?=https?:\/\/|www\.)/i));
   return candidates.map(candidate=>{
     const cleaned=candidate.replace(/[),.!?;]+$/g,'');
     try{
