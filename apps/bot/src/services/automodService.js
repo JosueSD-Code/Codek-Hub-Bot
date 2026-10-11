@@ -52,11 +52,17 @@ export async function processAutoMod(message){
   if(!matched)return null;
 
   const action=actionOf(matched);
-  if(action==='delete')await message.delete().catch(()=>{});
+  if(action==='delete')await message.delete();
   const durationMilliseconds=durationMs(matched);
   const hasCustomDuration=Number.isFinite(Number(matched.durationSeconds))&&Number(matched.durationSeconds)>0;
-  if(action==='timeout')await message.member?.timeout(durationMilliseconds,'AutoMod').catch(()=>{});
-  if(action==='ban')await message.member?.ban({reason:'AutoMod'}).catch(()=>{});
+  if(action==='timeout'){
+    if(!message.member)throw new Error('AutoMod timeout failed: guild member is unavailable.');
+    await message.member.timeout(durationMilliseconds,'AutoMod');
+  }
+  if(action==='ban'){
+    if(!message.member)throw new Error('AutoMod ban failed: guild member is unavailable.');
+    await message.member.ban({reason:'AutoMod'});
+  }
   await message.author.send('⚠️ Tu mensaje fue moderado automáticamente en **'+message.guild.name+'**. Regla: '+matched.type+'. Acción: '+action+'.').catch(()=>{});
   const temporaryBan=action==='ban'&&hasCustomDuration;
   await prisma.moderationAction.create({
