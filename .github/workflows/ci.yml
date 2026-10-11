@@ -23,7 +23,7 @@ jobs:
       - name: Validate Prisma schema
         run: npx prisma validate
         env:
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/codek_hub?schema=public
 
       - name: Syntax check
         run: find apps packages tests scripts -name '*.js' -print0 | xargs -0 -n1 node --check
@@ -33,7 +33,6 @@ jobs:
 
       - name: Check database integrity
         if: ${{ github.event_name == 'push' }}
-        continue-on-error: true
         run: node scripts/databaseCheck.js
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
