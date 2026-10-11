@@ -15,8 +15,10 @@ export function register(client,{logToChannel,prisma,renderVariables,context,cli
       });
       if(!config?.enabled||!config.goodbyeEnabled||!config.goodbyeMessage)return;
 
-      const channel=config.goodbyeChannelId
-        ?member.guild.channels.cache.get(config.goodbyeChannelId)
+      const goodbyeChannelId=config.goodbyeChannelId||config.channelId;
+      const channel=goodbyeChannelId
+        ?member.guild.channels.cache.get(goodbyeChannelId)
+          ||await member.guild.channels.fetch(goodbyeChannelId).catch(()=>null)
         :null;
       if(!channel?.isTextBased())return;
 
