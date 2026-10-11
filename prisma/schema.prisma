@@ -239,7 +239,7 @@ model LogConfig {
   guildId   String   @id
   guild      Guild    @relation(fields:[guildId],references:[id],onDelete:Cascade)
   channelId String
-  events    LogEvent[]
+  events    LogEvent[] @default([])
 }
 
 enum LogEvent {
