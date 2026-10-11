@@ -53,9 +53,13 @@ test('AutoMod valida enlaces por host y no por coincidencias de texto',()=>{
   const message=content=>({content,mentions:{users:{size:0}}});
   assert.equal(matchesRule(message('https://trusted.example/help'),linkRule),false);
   assert.equal(matchesRule(message('https://sub.trusted.example/help'),linkRule),false);
+  assert.equal(matchesRule(message('trusted.example/help'),linkRule),false);
   assert.equal(matchesRule(message('https://evil.example/trusted.example'),linkRule),true);
   assert.equal(matchesRule(message('https://trusted.example.evil.example'),linkRule),true);
   assert.equal(matchesRule(message('https://trusted.example/help,https://evil.example'),linkRule),true);
+  assert.equal(matchesRule(message('trusted.example,evil.example'),linkRule),true);
+  assert.equal(matchesRule(message('contact me at hello@trusted.example'),linkRule),false);
+  assert.equal(matchesRule(message('I like apples and oranges'),linkRule),false);
 });
 
 test('AutoMod detecta invitaciones reales de Discord, no texto dentro de otra URL',()=>{
