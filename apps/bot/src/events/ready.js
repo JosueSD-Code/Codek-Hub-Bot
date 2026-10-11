@@ -92,7 +92,12 @@ export function register(client,{prisma,endGiveaway,logger,ensureGuild,deploy,pr
     }catch(e){
       logger.error('Startup failed',{error:e.message,stack:e.stack});
       process.exitCode=1;
-      try{await prisma.$disconnect()}catch{}
+      try{c.destroy()}catch(disconnectError){
+        logger.warn('Discord cleanup after startup failure failed',{error:disconnectError.message});
+      }
+      try{await prisma.$disconnect()}catch(disconnectError){
+        logger.warn('Database cleanup after startup failure failed',{error:disconnectError.message});
+      }
     }
   });
 }
