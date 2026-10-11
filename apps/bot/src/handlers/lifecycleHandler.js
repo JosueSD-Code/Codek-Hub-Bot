@@ -1,4 +1,4 @@
-export function registerLifecycle({client,prisma,logger,sendConsoleLog}){
+export function registerLifecycle({client,prisma,logger}){
   let shuttingDown=false;
   async function shutdown(signal,exitCode=0){
     if(shuttingDown)return;
@@ -13,13 +13,11 @@ export function registerLifecycle({client,prisma,logger,sendConsoleLog}){
   process.on('unhandledRejection',reason=>{
     const details=String(reason?.stack||reason);
     logger.error('Unhandled promise rejection',{error:details});
-    void (async()=>{try{await sendConsoleLog?.('error','Unhandled promise rejection',{error:details})}catch{}})();
   });
   process.on('uncaughtException',error=>{
     const details=error?.stack||error?.message||String(error);
     logger.error('Uncaught exception',{error:details});
     void (async()=>{
-      try{await sendConsoleLog?.('error','Uncaught exception',{error:details})}catch{}
       await new Promise(resolve=>setTimeout(resolve,250));
       await shutdown('uncaughtException',1);
     })();
