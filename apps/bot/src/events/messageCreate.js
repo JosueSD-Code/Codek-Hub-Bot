@@ -125,6 +125,7 @@ export function register(client,{prisma,processAutoMod,ADMIN,helpEmbed,findAutoR
         try{
           const deleted=purgeAll?await purgeEverything(m.channel):await purgeChannelMessages(m.channel,amount);
           await audit(m.guildId,m.author.id,'moderation','purge',purgeAll?'all:'+deleted:String(deleted));
+          await logToChannel?.(m.guild,'🧹 Purga de mensajes','<@'+m.author.id+'> eliminó '+deleted+' mensajes en '+m.channel.toString()+'.','MODERATION');
           await notice.delete().catch(()=>{});
           await m.delete().catch(()=>{});
           if(!purgeAll&&deleted<amount){
