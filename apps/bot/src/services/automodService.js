@@ -58,7 +58,7 @@ export function matchesRule(message,rule){
       (url.host==='discord.gg'&&url.pathname.length>1)||
       (['discord.com','discordapp.com'].includes(url.host)&&/^\/invite\/[^/]+/i.test(url.pathname))
     ));
-    const bareInvites=/(?:^|[\\s(<])(?:discord\\.gg\\/[a-z0-9-]+|discord(?:app)?\\.com\\/invite\\/[a-z0-9-]+)/i.test(text);
+    const bareInvites=/(?:^|[\s(<])(?:discord\.gg\/[a-z0-9-]+|discord(?:app)?\.com\/invite\/[a-z0-9-]+)/i.test(text);
     return linkedInvites||bareInvites;
   }
   if(rule.type==='words')return (rule.whitelist||[]).some(word=>lower.includes(String(word).toLowerCase()));
