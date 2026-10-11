@@ -10,6 +10,10 @@ import {
 } from 'discord.js';
 
 export async function handleComponentInteraction(i,{client,prisma,deny,clip,safeUrl,color,context,renderVariables,audit,createTicket,closeTicket,cooldowns,toggleParticipant,logToChannel,logger,isAdmin}){
+    if(i.isButton()&&i.customId==='giveaway:pending'){
+      return i.reply(deny('El sorteo se está preparando. Inténtalo de nuevo en un momento.'));
+    }
+
     if(i.isButton()&&i.customId.startsWith('giveaway:join:')){
       const id=i.customId.split(':')[2];
       await i.deferUpdate();
