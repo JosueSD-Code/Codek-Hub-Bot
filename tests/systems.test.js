@@ -62,6 +62,8 @@ test('AutoMod detecta invitaciones reales de Discord, no texto dentro de otra UR
   const message=content=>({content,mentions:{users:{size:0}}});
   assert.equal(matchesRule(message('https://discord.gg/abc123'),rule),true);
   assert.equal(matchesRule(message('https://discord.com/invite/abc123'),rule),true);
+  assert.equal(matchesRule(message('discord.gg/abc123'),rule),true);
+  assert.equal(matchesRule(message('discord.com/invite/abc123'),rule),true);
   assert.equal(matchesRule(message('https://evil.example/discord.gg/abc123'),rule),false);
   assert.equal(matchesRule(message('https://discord.gg.evil.example/abc123'),rule),false);
 });
