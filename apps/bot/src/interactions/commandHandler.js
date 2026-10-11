@@ -1,6 +1,7 @@
 import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { checkBotPermissions } from '../middleware/botPermissions.js';
 import path from 'node:path';
+import { hasPermission } from '../utils/permissions.js';
 import {
   PermissionFlagsBits,
   ChannelType,
@@ -306,6 +307,10 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
 
     if(i.commandName==='warn'||i.commandName==='mute'||i.commandName==='timeout'||i.commandName==='unmute'||i.commandName==='untimeout'||i.commandName==='kick'||i.commandName==='ban'||i.commandName==='unban'||i.commandName==='history'||i.commandName==='clear'){
       const permissions={warn:PermissionFlagsBits.ModerateMembers,mute:PermissionFlagsBits.ModerateMembers,timeout:PermissionFlagsBits.ModerateMembers,unmute:PermissionFlagsBits.ModerateMembers,untimeout:PermissionFlagsBits.ModerateMembers,kick:PermissionFlagsBits.KickMembers,ban:PermissionFlagsBits.BanMembers,unban:PermissionFlagsBits.BanMembers,history:PermissionFlagsBits.ModerateMembers,clear:PermissionFlagsBits.ManageMessages};
+      const permissionNames={warn:'Gestionar miembros',mute:'Gestionar miembros',timeout:'Gestionar miembros',unmute:'Gestionar miembros',untimeout:'Gestionar miembros',kick:'Expulsar miembros',ban:'Banear miembros',unban:'Banear miembros',history:'Gestionar miembros',clear:'Gestionar mensajes'};
+      if(!hasPermission(i,permissions[i.commandName])){
+        return i.reply(deny('Necesitas el permiso **'+permissionNames[i.commandName]+'** para ejecutar este comando.'));
+      }
       await checkBotPermissions(i,[permissions[i.commandName]]);
       if(i.commandName==='clear'){const amount=i.options.getInteger('cantidad');const deleted=await purgeChannelMessages(i.channel,amount);await audit(i.guildId,i.user.id,'moderation','clear',String(deleted));return i.reply(deny('🧹 Eliminados **'+deleted+'** mensajes.'))}
       if(i.commandName==='unban'){const id=i.options.getString('usuario').trim();await i.guild.members.unban(id,'Moderación');await recordModeration({guildId:i.guildId,targetId:id,moderatorId:i.user.id,action:'unban'});await logToChannel(i.guild,'🔓 Moderación','<@'+i.user.id+'> desbaneó a <@'+id+'>.','MODERATION');return i.reply(deny('Usuario desbaneado.'))}
