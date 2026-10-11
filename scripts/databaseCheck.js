@@ -3,6 +3,14 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const EXPECTED_MIGRATIONS = [
+  '0_init',
+  '20261003192000_preserve_ticket_history',
+  '20261004023000_sync_current_schema',
+  '20261004030000_add_role_update_log_event',
+  '20261004031000_backfill_role_update_log_event'
+];
+
 async function tableExists(tableName) {
   const rows = await prisma.$queryRawUnsafe(
     'SELECT 1 FROM information_schema.tables WHERE table_schema = \'public\' AND table_name = $1',
@@ -49,17 +57,28 @@ async function main() {
   };
 
   const migrationTable = await tableExists('_prisma_migrations');
-  let migrationApplied = false;
-  if (migrationTable) {
-    const rows = await prisma.$queryRaw`SELECT 1 FROM "_prisma_migrations" WHERE migration_name = '20261003192000_preserve_ticket_history' AND finished_at IS NOT NULL LIMIT 1`;
-    migrationApplied = rows.length > 0;
-  }
+  const migrationRows = migrationTable
+    ? await prisma.$queryRaw`SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL`
+    : [];
+  const appliedMigrations = new Set(migrationRows.map(row => row.migration_name));
+  const missingMigrations = EXPECTED_MIGRATIONS.filter(name => !appliedMigrations.has(name));
+  const logEventsInfo = await prisma.$queryRawUnsafe(
+    'SELECT is_nullable, column_default FROM information_schema.columns WHERE table_schema = \'public\' AND table_name = \'LogConfig\' AND column_name = \'events\''
+  );
+  const roleUpdateEventRows = await prisma.$queryRaw`
+    SELECT 1 FROM pg_type t JOIN pg_enum e ON e.enumtypid = t.oid
+    WHERE t.typname = 'LogEvent' AND e.enumlabel = 'ROLE_UPDATE' LIMIT 1
+  `;
 
   const result = {
     ticketCategoryName,
     ticketCategoryIdNullable: ticketCategoryIdNullable[0]?.is_nullable === 'YES',
+    logConfigEventsNotNull: logEventsInfo[0]?.is_nullable === 'NO',
+    logConfigEventsHasDefault: Boolean(logEventsInfo[0]?.column_default),
     migrationTable,
-    migrationApplied,
+    appliedMigrations: [...appliedMigrations].sort(),
+    missingMigrations,
+    roleUpdateEventExists: roleUpdateEventRows.length > 0,
     duplicates: duplicateChecks
   };
 
@@ -74,8 +93,16 @@ async function main() {
     throw new Error('Ticket history schema is not applied: categoryName/categoryId nullable state is incorrect.');
   }
 
-  if (!migrationApplied) {
-    console.warn('WARNING: migration 20261003192000_preserve_ticket_history is not recorded as applied. Apply it with: npx prisma migrate deploy');
+  if (!logEventsInfo.length || !result.logConfigEventsNotNull || !result.logConfigEventsHasDefault) {
+    throw new Error('LogConfig.events is not aligned with Prisma (NOT NULL/default required).');
+  }
+
+  if (!result.roleUpdateEventExists) {
+    throw new Error('The LogEvent enum is missing ROLE_UPDATE.');
+  }
+
+  if (!migrationTable || missingMigrations.length) {
+    throw new Error('Some project migrations are missing or not successfully applied: ' + (missingMigrations.join(', ') || '_prisma_migrations table'));
   }
 }
 
