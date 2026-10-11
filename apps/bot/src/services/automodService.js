@@ -54,10 +54,12 @@ export function matchesRule(message,rule){
     return urls.some(url=>!isAllowedDomain(url.host,rule.whitelist));
   }
   if(rule.type==='invites'){
-    return extractUrls(text).some(url=>url&&(
+    const linkedInvites=extractUrls(text).some(url=>url&&(
       (url.host==='discord.gg'&&url.pathname.length>1)||
       (['discord.com','discordapp.com'].includes(url.host)&&/^\/invite\/[^/]+/i.test(url.pathname))
     ));
+    const bareInvites=/(?:^|[\\s(<])(?:discord\\.gg\\/[a-z0-9-]+|discord(?:app)?\\.com\\/invite\\/[a-z0-9-]+)/i.test(text);
+    return linkedInvites||bareInvites;
   }
   if(rule.type==='words')return (rule.whitelist||[]).some(word=>lower.includes(String(word).toLowerCase()));
   if(rule.type==='mentions')return message.mentions.users.size>=Number(rule.threshold||5);
