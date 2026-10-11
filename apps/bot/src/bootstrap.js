@@ -34,7 +34,6 @@ import {
   cancel as cancelGiveaway,
   reroll as rerollGiveaway
 } from './services/giveawayService.js';
-import { configureDiscordLogger, sendConsoleLog } from './utils/logger.js';
 import { registerInteractionHandler } from './handlers/interactionHandler.js';
 import { registerEvents } from './events/index.js';
 import { createLogService } from './services/logService.js';
@@ -122,7 +121,7 @@ export async function startBot(){
   });
   const presence=createPresenceService(client,prisma);
   const deploy=()=>deployCommands(client,env,commands,logger);
-  const shutdown=registerLifecycle({client,prisma,logger,sendConsoleLog});
+  const shutdown=registerLifecycle({client,prisma,logger});
   const helpEmbed=()=>createHelpEmbed(client);
 
   const {
@@ -183,8 +182,6 @@ export async function startBot(){
     findAutoResponder,
     ensureGuild,
     deploy,
-    configureDiscordLogger,
-    sendConsoleLog,
     logToChannel
   };
 
