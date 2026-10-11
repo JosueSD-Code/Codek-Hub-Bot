@@ -2,6 +2,7 @@ import { readFile, mkdir, writeFile, readdir } from 'node:fs/promises';
 import { checkBotPermissions } from '../middleware/botPermissions.js';
 import path from 'node:path';
 import { hasPermission } from '../utils/permissions.js';
+import { disableGiveawayMessage } from '../utils/giveawayMessages.js';
 import {
   PermissionFlagsBits,
   ChannelType,
@@ -363,7 +364,7 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
           message=await i.channel.send({
             embeds:[new EmbedBuilder()
               .setTitle('🎉 Sorteo')
-              .setDescription('**'+i.options.getString('premio')+'**\\n\\nFinaliza <t:'+Math.floor(endsAt.getTime()/1000)+':R>\\nParticipa con el botón de abajo.')
+              .setDescription('**'+i.options.getString('premio')+'**\n\nFinaliza <t:'+Math.floor(endsAt.getTime()/1000)+':R>\nParticipa con el botón de abajo.')
               .setColor(0x5865F2)],
             components:[new ActionRowBuilder().addComponents(
               new ButtonBuilder()
@@ -399,15 +400,16 @@ export async function handleCommandInteraction(i,{client,prisma,logger,commands,
       }
       if(sub==='list'){const rows=await prisma.giveaway.findMany({where:{guildId:i.guildId,ended:false},orderBy:{endsAt:'asc'}});return i.reply(deny(rows.length?rows.map(r=>'• `'+r.id+'` — **'+r.prize+'** — '+r.participants.length+' participantes').join('\n'):'No hay sorteos activos.'))}
       const id=i.options.getString('id');const row=await prisma.giveaway.findFirst({where:{id,guildId:i.guildId}});if(!row)return i.reply(deny('Sorteo no encontrado.'));
-      if(sub==='cancel'){const ended=await cancelGiveaway(row);return i.reply(deny(ended?'Sorteo cancelado.':'El sorteo ya había terminado.'))}
-      if(sub==='end'){const ended=await endGiveaway(row);if(!ended)return i.reply(deny('El sorteo ya había terminado.'));const channel=i.guild.channels.cache.get(row.channelId);if(channel?.isTextBased())await channel.send('🎉 Ganadores del sorteo **'+row.prize+'**: '+(ended.winnerIds?.map(x=>'<@'+x+'>').join(', ')||'ninguno'));return i.reply(deny('Sorteo finalizado.'))}
+      if(sub==='cancel'){await i.deferReply({flags:64});const ended=await cancelGiveaway(row);if(ended)await disableGiveawayMessage(client,row,logger);return i.editReply(deny(ended?'Sorteo cancelado.':'El sorteo ya había terminado.'))}
+      if(sub==='end'){await i.deferReply({flags:64});const ended=await endGiveaway(row);if(!ended)return i.editReply(deny('El sorteo ya había terminado.'));await disableGiveawayMessage(client,row,logger);const channel=i.guild.channels.cache.get(row.channelId)??await i.guild.channels.fetch(row.channelId).catch(()=>null);if(channel?.isTextBased())await channel.send('🎉 Ganadores del sorteo **'+row.prize+'**: '+(ended.winnerIds?.map(x=>'<@'+x+'>').join(', ')||'ninguno'));return i.editReply(deny('Sorteo finalizado.'))}
       if(sub==='reroll'){
         if(!row.ended)return i.reply(deny('El sorteo todavía está activo. Primero finalízalo.'));
+        await i.deferReply({flags:64});
         const rerolled=await rerollGiveaway(row);
-        if(!rerolled)return i.reply(deny('El sorteo cambió mientras se hacía el reroll. Inténtalo de nuevo.'));
+        if(!rerolled)return i.editReply(deny('El sorteo cambió mientras se hacía el reroll. Inténtalo de nuevo.'));
         const channel=i.guild.channels.cache.get(row.channelId);
         if(channel?.isTextBased())await channel.send('🎉 Nuevos ganadores del sorteo **'+rerolled.prize+'**: '+(rerolled.winnerIds?.map(x=>'<@'+x+'>').join(', ')||'ninguno'));
-        return i.reply(deny('Reroll realizado.'));
+        return i.editReply(deny('Reroll realizado.'));
       }
     }
 
