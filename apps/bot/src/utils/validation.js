@@ -25,6 +25,13 @@ export function safeUrl(value){
   }
 }
 
+export function parseCustomEmoji(value){
+  const raw=String(value??'').trim();
+  const match=raw.match(/^<(a?):([\w~]+):(\d+)>$/);
+  if(!match)return null;
+  return {animated:match[1]==='a',name:match[2],id:match[3]};
+}
+
 export function isUnicodeEmoji(value){
   const text=String(value??'').trim();
   if(!text)return false;
