@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseDuration } from '../apps/bot/src/services/moderationService.js';
-import { durationMs } from '../apps/bot/src/services/automodService.js';
+import { durationMs, matchesRule } from '../apps/bot/src/services/automodService.js';
 import { handleDiscordError } from '../apps/bot/src/middleware/validation.js';
 import { commands } from '../apps/bot/src/commands/index.js';
 import { isAdmin, roleIdsByName } from '../apps/bot/src/utils/permissions.js';
@@ -46,6 +46,24 @@ test('las opciones requeridas preceden a las opcionales en todos los subcomandos
 test('parseDuration rechaza overflow numérico',()=>{
   assert.equal(parseDuration('999999999999999999999999w'),null);
   assert.equal(parseDuration('9007199254740991w'),null);
+});
+
+test('AutoMod valida enlaces por host y no por coincidencias de texto',()=>{
+  const linkRule={type:'links',whitelist:['trusted.example']};
+  const message=content=>({content,mentions:{users:{size:0}}});
+  assert.equal(matchesRule(message('https://trusted.example/help'),linkRule),false);
+  assert.equal(matchesRule(message('https://sub.trusted.example/help'),linkRule),false);
+  assert.equal(matchesRule(message('https://evil.example/trusted.example'),linkRule),true);
+  assert.equal(matchesRule(message('https://trusted.example.evil.example'),linkRule),true);
+});
+
+test('AutoMod detecta invitaciones reales de Discord, no texto dentro de otra URL',()=>{
+  const rule={type:'invites'};
+  const message=content=>({content,mentions:{users:{size:0}}});
+  assert.equal(matchesRule(message('https://discord.gg/abc123'),rule),true);
+  assert.equal(matchesRule(message('https://discord.com/invite/abc123'),rule),true);
+  assert.equal(matchesRule(message('https://evil.example/discord.gg/abc123'),rule),false);
+  assert.equal(matchesRule(message('https://discord.gg.evil.example/abc123'),rule),false);
 });
 
 test('AutoMod convierte la duración configurada en segundos a milisegundos',()=>{
